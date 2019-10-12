@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -9,7 +10,7 @@
 typedef enum {false, true} bool;
 
 struct str {
-    const char* ptr;
+    const char* data;
     size_t len;
 };
 typedef struct str Str;
@@ -25,7 +26,7 @@ str_eq(Str a, Str b) {
         return false;
     }
     for (size_t i = 0; i < a.len; i++) {
-        if (a.ptr[i] != b.ptr[i]) {
+        if (a.data[i] != b.data[i]) {
             return false;
         }
     }
@@ -131,8 +132,8 @@ print_bindings() {
     for (size_t i = 0; i < n_bindings; i++) {
         Binding* b = bindings + i;
         fprintf(stderr, "%.*s %.*s %s(%lX)\n",
-                (int)b->name.len, b->name.ptr,
-                (int)b->type->name.len, b->type->name.ptr,
+                (int)b->name.len, b->name.data,
+                (int)b->type->name.len, b->type->name.data,
                 b->loc.seg->name, b->loc.offset);
     }
 }
@@ -180,6 +181,8 @@ typedef struct result Result;
 #include "regs.c"
 
 #include "instructions.c"
+
+#include "mem.c"
 
 static bool
 is_digit(char c) {
@@ -315,9 +318,11 @@ print_error(const char* msg, State* s) {
     get_linecol(s, &line, &col);
     fprintf(stderr, "%s:%lu:%lu %s\n", s->file->name, line, col, msg);
     Str codeline = get_full_line(s->file->content, s->offset);
-    fprintf(stderr, " | %.*s\n", (int)codeline.len, codeline.ptr);
+    fprintf(stderr, " | %.*s\n", (int)codeline.len, codeline.data);
     fprintf(stderr, " | %*s\n", (int)col + 1, "^");
 }
+
+#include "ast.c"
 
 #include "elf.c"
 
@@ -438,6 +443,9 @@ compile(struct file* file) {
     // Will be filled in by later function calls.
     Result result;
 
+    Ast ast_root = {0};
+    Ast* block = &ast_root;
+
     init_seg(&seg_text, ".text", 0x20b0);
     init_seg(&seg_data, ".data", 0x3000);
 
@@ -462,20 +470,19 @@ compile(struct file* file) {
         if (read_label(&state, &result)) {
             if (str_eq(result.label, STR("if"))) {
                 enum reg rd = compile_expr(&state);
-                // TODO: Add a new scope in a stack.
                 if (read_char(&state, '{')) {
+                    block = ast_add(block, ast_new_if());
+                    end_of_statement = true;
                 }
             } else if (str_eq(result.label, STR("stop"))) {
                 if (read_char(&state, ';')) {
-                    add_instr_jump(&seg_text, 0);
+                    ast_add(block, ast_new_stop());
                     end_of_statement = true;
                 }
             } else if (str_eq(result.label, STR("exit"))) {
                 enum reg rd = compile_expr(&state);
                 if (read_char(&state, ';')) {
-                    result.type = REGISTER;
-                    result.reg = rd;
-                    add_instr_exit(&seg_text, &result);
+                    ast_add(block, ast_new_exit());
                     end_of_statement = true;
                 }
             } else {
@@ -500,6 +507,7 @@ compile(struct file* file) {
                                 };
                                 Binding* b = add_binding(name, t, l);
                                 inside_function = b;
+                                block = ast_add(block, ast_new_fn(b));
                                 end_of_statement = true;
                             }
                         }
@@ -515,8 +523,19 @@ compile(struct file* file) {
                     }
                 }
             }
-        } else if (inside_function && read_char(&state, '}')) {
-            inside_function = NULL;
+        } else if (block && read_char(&state, '}')) {
+            switch (block->type) {
+            case AST_IF:
+                block = block->if_block.parent;
+                break;
+            case AST_FN:
+                block = block->fn_block.parent;
+                inside_function = NULL;
+                break;
+            default:
+                print_error("Too many `}`", &state);
+                goto after_loop;
+            }
             end_of_statement = true;
         }
 
@@ -527,12 +546,15 @@ compile(struct file* file) {
         }
     }
 
-    fprintf(stderr, "Data segment:\n");
+after_loop:
+    fprintf(stderr, "\nData segment:\n");
     print_segment(&seg_data);
-    fprintf(stderr, "Text segment:\n");
+    fprintf(stderr, "\nText segment:\n");
     print_segment(&seg_text);
-    fprintf(stderr, "Bindings:\n");
+    fprintf(stderr, "\nBindings:\n");
     print_bindings();
+    fprintf(stderr, "\nAst:\n");
+    print_ast(&ast_root);
 
     write_elf_file("a");
 }
