@@ -15,6 +15,7 @@ enum AstType {
     AST_LABEL,
     AST_EXIT,
     AST_STOP,
+    AST_ASSIGN,
 };
 
 struct Ast {
@@ -51,6 +52,10 @@ struct Ast {
         struct AstLabel {
             Str name;
         } label;
+        struct AstAssign {
+            Binding* binding;
+            struct Ast* val;
+        } assign;
     };
 };
 typedef struct Ast Ast;
@@ -180,6 +185,19 @@ ast_new_label(Str label) {
     return a;
 }
 
+static Ast*
+ast_new_assign(Binding* b, Ast* val) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_ASSIGN,
+        .assign = {
+            .binding = b,
+            .val = val,
+        },
+    };
+    return a;
+}
+
 static void
 print_ast_part(Ast* ast, int indent);
 
@@ -226,6 +244,9 @@ print_ast_part(Ast* ast, int indent) {
             fprintf(stderr, "%llu", ast->num.u);
         }
     } break;
+    case AST_LABEL: {
+        fprintf(stderr, "%.*s", a->label.name.len, a->label.name.data);
+    } break;
     case AST_OPER: {
         struct AstOper* o = &a->oper;
         fprintf(stderr, "%s(", oper_to_str(o->oper));
@@ -233,6 +254,12 @@ print_ast_part(Ast* ast, int indent) {
         fprintf(stderr, ", ");
         print_ast_part(o->r, indent);
         fprintf(stderr, ")");
+    } break;
+    case AST_ASSIGN: {
+        Str bn = a->assign.binding->name;
+        fprintf(stderr, "%.*s = ", bn.len, bn.data);
+        print_ast_part(a->assign.val, indent);
+        fprintf(stderr, "\n");
     } break;
     }
 }

@@ -481,7 +481,6 @@ compile(struct file* file) {
                     if (read_number(&state, &result)) {
                         if (read_char(&state, ';')) {
                             const Type* t = get_type(type);
-                            // TODO: result->num can be unsigned too
                             size_t o = add_data(&seg_data, &result->num.i,
                                                 t->size);
                             Location l = (Location){&seg_data, o};
@@ -506,9 +505,7 @@ compile(struct file* file) {
                     Ast* rd = compile_expr(&state);
                     if (read_char(&state, ';')) {
                         Binding* b = get_binding(name);
-                        //result->type = REGISTER;
-                        //result->reg = rd;
-                        //add_instr_set_mem(&seg_text, b->loc, &result);
+                        ast_add(block, ast_new_assign(b, rd));
                         end_of_statement = true;
                     }
                 }
