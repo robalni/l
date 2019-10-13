@@ -175,7 +175,7 @@ oper_to_str(enum oper o) {
 }
 
 enum result_type {
-    LABEL, NUMBER, OPER, REGISTER,
+    LABEL, NUMBER, REGISTER,
 };
 struct result {
     enum result_type type;
@@ -429,6 +429,48 @@ compile_expr(State* state) {
     return return_ast;
 }
 
+#define ast_for(a, list) \
+    for (const Ast* a = list.first; a; a = a->next)
+static Result
+compile_ast_expr(const Ast* ast) {
+    switch (ast->type) {
+    case AST_NUM: {
+        return (Result){
+            .type = NUMBER,
+            .number = ast->num.i,  // TODO: Can be unsigned.
+        };
+    } break;
+    case AST_OPER: {
+        Result l = compile_ast_expr(ast->oper.l);
+        Result r = compile_ast_expr(ast->oper.r);
+    } break;
+    }
+}
+
+static void
+compile_ast_fn(const struct AstFn* fn) {
+    ast_for(b, fn->children) {
+        switch (b->type) {
+        case AST_EXIT: {
+            Result r = compile_ast_expr(b->exit.val);
+            add_instr_exit(&seg_text, &r);
+        } break;
+        }
+    }
+}
+
+static void
+compile_ast(const Ast* root) {
+    ast_for(a, root->root.children) {
+        switch (a->type) {
+        case AST_FN: {
+            compile_ast_fn(&a->fn_block);
+        } break;
+        }
+    }
+}
+#undef ast_for
+
 static void
 compile(struct file* file) {
     State state = {
@@ -539,6 +581,9 @@ compile(struct file* file) {
     }
 
 after_loop:
+
+    compile_ast(&ast_root);
+
     fprintf(stderr, "\nData segment:\n");
     print_segment(&seg_data);
     fprintf(stderr, "\nText segment:\n");
