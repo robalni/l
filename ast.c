@@ -8,8 +8,11 @@ typedef struct AstList AstList;
 
 enum AstType {
     AST_ROOT,
+    AST_NUM,
+    AST_OPER,
     AST_FN,
     AST_IF,
+    AST_LABEL,
     AST_EXIT,
     AST_STOP,
 };
@@ -18,18 +21,36 @@ struct Ast {
     enum AstType type;
     struct Ast* next;  // When in a list.
     union {
-        struct {
+        struct AstRoot {
             AstList children;
         } root;
-        struct {
+        struct AstNum {
+            bool sign;
+            union {
+                uint64_t u;
+                int64_t i;
+            };
+        } num;
+        struct AstOper {
+            enum oper oper;
+            struct Ast* l;
+            struct Ast* r;
+        } oper;
+        struct AstFn {
             struct Ast* parent;
             AstList children;
             Binding* name;
         } fn_block;
-        struct {
+        struct AstIf {
             struct Ast* parent;
             AstList children;
         } if_block;
+        struct AstExit {
+            struct Ast* val;
+        } exit;
+        struct AstLabel {
+            Str name;
+        } label;
     };
 };
 typedef struct Ast Ast;
@@ -47,11 +68,9 @@ ast_list_add(AstList* list, Ast* a) {
     }
 }
 
-// The `next` and `parent` fields in `item` does not need to be filled in.
+// The `next` and `parent` fields in `a` does not need to be filled in.
 static Ast*
-ast_add(Ast* block, Ast item) {
-    Ast* a = mem_alloc(&ast_mem, Ast);
-    *a = item;
+ast_add(Ast* block, Ast* a) {
     a->next = NULL;
     switch (block->type) {
     case AST_IF:
@@ -80,35 +99,85 @@ ast_add(Ast* block, Ast item) {
     return a;
 }
 
-static Ast
-ast_new_exit() {
-    return (Ast) {
+static Ast*
+ast_new_exit(Ast* val) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
         .type = AST_EXIT,
+        .exit = {
+            .val = val,
+        },
     };
+    return a;
 }
 
-static Ast
+static Ast*
 ast_new_stop() {
-    return (Ast) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
         .type = AST_STOP,
     };
+    return a;
 }
 
-static Ast
+static Ast*
 ast_new_fn(Binding* binding) {
-    return (Ast) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
         .type = AST_FN,
         .fn_block = {
             .name = binding,
         },
     };
+    return a;
 }
 
-static Ast
+static Ast*
 ast_new_if() {
-    return (Ast) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
         .type = AST_IF,
     };
+    return a;
+}
+
+static Ast*
+ast_new_oper(Ast* l, enum oper oper, Ast* r) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_OPER,
+        .oper = {
+            .oper = oper,
+            .l = l,
+            .r = r,
+        },
+    };
+    return a;
+}
+
+static Ast*
+ast_new_num_signed(int64_t n) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_NUM,
+        .num = {
+            .sign = true,
+            .i = n,
+        },
+    };
+    return a;
+}
+
+static Ast*
+ast_new_label(Str label) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_LABEL,
+        .label = {
+            .name = label,
+        },
+    };
+    return a;
 }
 
 static void
@@ -146,7 +215,24 @@ print_ast_part(Ast* ast, int indent) {
         fprintf(stderr, "%*s}\n", insp, "");
     } break;
     case AST_EXIT: {
-        fprintf(stderr, "%*sexit;\n", insp, "");
+        fprintf(stderr, "%*sexit ", insp, "");
+        print_ast_part(a->exit.val, indent);
+        fprintf(stderr, ";\n");
+    } break;
+    case AST_NUM: {
+        if (ast->num.sign) {
+            fprintf(stderr, "%lld", ast->num.i);
+        } else {
+            fprintf(stderr, "%llu", ast->num.u);
+        }
+    } break;
+    case AST_OPER: {
+        struct AstOper* o = &a->oper;
+        fprintf(stderr, "%s(", oper_to_str(o->oper));
+        print_ast_part(o->l, indent);
+        fprintf(stderr, ", ");
+        print_ast_part(o->r, indent);
+        fprintf(stderr, ")");
     } break;
     }
 }

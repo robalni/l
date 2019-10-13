@@ -164,6 +164,14 @@ enum oper {
     OP_TIMES,
 };
 
+static const char*
+oper_to_str(enum oper o) {
+    switch (o) {
+    case OP_PLUS:   return "+";
+    case OP_TIMES:  return "*";
+    }
+}
+
 enum result_type {
     LABEL, NUMBER, OPER, REGISTER,
 };
@@ -178,11 +186,13 @@ struct result {
 };
 typedef struct result Result;
 
+#include "mem.c"
+
+#include "ast.c"
+
 #include "regs.c"
 
 #include "instructions.c"
-
-#include "mem.c"
 
 static bool
 is_digit(char c) {
@@ -209,7 +219,7 @@ skip_whitespace(State* s) {
 }
 
 static size_t
-read_label(State* s, Result* r) {
+read_label(State* s, Ast** r) {
     skip_whitespace(s);
     size_t o;
     for (o = s->offset; o < s->file->size; o++) {
@@ -225,14 +235,14 @@ read_label(State* s, Result* r) {
         return 0;
     }
     size_t len = o - s->offset;
-    r->type = LABEL;
-    r->label = (Str){s->file->content + s->offset, len};
+    Str lab = {s->file->content + s->offset, len};
+    *r = ast_new_label(lab);
     s->offset = o;
     return len;
 }
 
 static size_t
-read_number(State* s, Result* r) {
+read_number(State* s, Ast** r) {
     skip_whitespace(s);
     size_t o;
     uint64_t n = 0;
@@ -248,8 +258,7 @@ read_number(State* s, Result* r) {
         return 0;
     }
     size_t len = o - s->offset;
-    r->type = NUMBER;
-    r->number = n;
+    *r = ast_new_num_signed(n);
     s->offset = o;
     return len;
 }
@@ -265,14 +274,12 @@ read_char(State* s, char c) {
 }
 
 static size_t
-read_binop(State* s, Result* r) {
+read_binop(State* s, enum oper* r) {
     size_t size = 1;
     if (read_char(s, '+')) {
-        r->type = OPER;
-        r->oper = OP_PLUS;
+        *r = OP_PLUS;
     } else if (read_char(s, '*')) {
-        r->type = OPER;
-        r->oper = OP_TIMES;
+        *r = OP_TIMES;
     } else {
         return 0;
     }
@@ -322,8 +329,6 @@ print_error(const char* msg, State* s) {
     fprintf(stderr, " | %*s\n", (int)col + 1, "^");
 }
 
-#include "ast.c"
-
 #include "elf.c"
 
 static bool
@@ -347,10 +352,10 @@ higher_precedence(enum oper a, enum oper b) {
     return pa.prec > pb.prec;
 }
 
-static enum reg
+static Ast*
 compile_expr(State* state) {
     struct expr_frame {
-        Result l;
+        Ast* l;
         enum oper op;
     };
 #define MAX_N_EXPR_FRAMES 10
@@ -358,16 +363,16 @@ compile_expr(State* state) {
     size_t expr_stack_len = 0;
     struct expr_frame* frame;  // The current (top) one.
 
-    enum reg return_reg;
+    Ast* return_ast = NULL;
 
-    Result r1;
+    Ast* r1 = NULL;
     enum oper op;
     bool past_first_op = false;
-    Result r2;
-    Result tmp;
+    Ast* r2 = NULL;
+    enum oper latest_oper;
 
     while (state->offset < state->file->size) {
-        Result* r;
+        Ast** r;
         if (past_first_op) {
             r = &r2;
         } else {
@@ -375,9 +380,9 @@ compile_expr(State* state) {
         }
 
         if (read_label(state, r) || read_number(state, r)) {
-        } else if (read_binop(state, &tmp)) {
+        } else if (read_binop(state, &latest_oper)) {
             if (past_first_op) {
-                if (higher_precedence(tmp.oper, op)) {
+                if (higher_precedence(latest_oper, op)) {
                     assert(expr_stack_len < MAX_N_EXPR_FRAMES);
                     expr_stack[expr_stack_len] = (struct expr_frame){
                         r1, op,
@@ -386,53 +391,37 @@ compile_expr(State* state) {
                     expr_stack_len++;
                     r1 = r2;
                 } else {
-                    enum reg rd;
-                    rd = add_instr_op(&seg_text, op, &r1, &r2);
-                    r1 = (Result){
-                        .type = REGISTER,
-                        .reg = rd,
-                    };
-                    op = tmp.oper;
-                    r2.type = REGISTER;
-                    r2.reg = rd;
+                    r1 = ast_new_oper(r1, op, r2);
+                    op = latest_oper;
                     while (expr_stack_len > 0) {
                         frame = &expr_stack[expr_stack_len - 1];
                         if (higher_precedence(op, frame->op)) {
                             break;
                         }
-                        rd = add_instr_op(&seg_text, frame->op, &frame->l, &r2);
                         expr_stack_len--;
-                        r1 = (Result){
-                            .type = REGISTER,
-                            .reg = rd,
-                        };
+                        r1 = ast_new_oper(frame->l, frame->op, r1);
                         op = frame->op;
                     }
                 }
             }
-            op = tmp.oper;
+            op = latest_oper;
             past_first_op = true;
         } else {
             if (!past_first_op) {
-                return_reg = into_reg(&seg_text, &r1);
+                return_ast = r1;
                 break;
             }
-            enum reg rd;
-            rd = add_instr_op(&seg_text, op, &r1, &r2);
-            r2.type = REGISTER;
-            r2.reg = rd;
+            r2 = ast_new_oper(r1, op, r2);
             while (expr_stack_len > 0) {
                 frame = &expr_stack[expr_stack_len - 1];
-                rd = add_instr_op(&seg_text, frame->op, &frame->l, &r2);
-                r2.type = REGISTER;
-                r2.reg = rd;
+                r2 = ast_new_oper(frame->l, frame->op, r2);
                 expr_stack_len--;
             }
-            return_reg = rd;
+            return_ast = r2;
             break;
         }
     }
-    return return_reg;
+    return return_ast;
 }
 
 static void
@@ -441,7 +430,7 @@ compile(struct file* file) {
         .file = file,
     };
     // Will be filled in by later function calls.
-    Result result;
+    Ast* result = NULL;
 
     Ast ast_root = {0};
     Ast* block = &ast_root;
@@ -468,31 +457,32 @@ compile(struct file* file) {
         bool end_of_statement = false;
 
         if (read_label(&state, &result)) {
-            if (str_eq(result.label, STR("if"))) {
-                enum reg rd = compile_expr(&state);
+            if (str_eq(result->label.name, STR("if"))) {
+                Ast* rd = compile_expr(&state);
                 if (read_char(&state, '{')) {
                     block = ast_add(block, ast_new_if());
                     end_of_statement = true;
                 }
-            } else if (str_eq(result.label, STR("stop"))) {
+            } else if (str_eq(result->label.name, STR("stop"))) {
                 if (read_char(&state, ';')) {
                     ast_add(block, ast_new_stop());
                     end_of_statement = true;
                 }
-            } else if (str_eq(result.label, STR("exit"))) {
-                enum reg rd = compile_expr(&state);
+            } else if (str_eq(result->label.name, STR("exit"))) {
+                Ast* val = compile_expr(&state);
                 if (read_char(&state, ';')) {
-                    ast_add(block, ast_new_exit());
+                    ast_add(block, ast_new_exit(val));
                     end_of_statement = true;
                 }
             } else {
-                Str name = result.label;
+                Str name = result->label.name;
                 if (read_label(&state, &result)) {
-                    Str type = result.label;
+                    Str type = result->label.name;
                     if (read_number(&state, &result)) {
                         if (read_char(&state, ';')) {
                             const Type* t = get_type(type);
-                            size_t o = add_data(&seg_data, &result.number,
+                            // TODO: result->num can be unsigned too
+                            size_t o = add_data(&seg_data, &result->num.i,
                                                 t->size);
                             Location l = (Location){&seg_data, o};
                             add_binding(name, t, l);
@@ -513,12 +503,12 @@ compile(struct file* file) {
                         }
                     }
                 } else if (read_char(&state, '=')) {
-                    enum reg rd = compile_expr(&state);
+                    Ast* rd = compile_expr(&state);
                     if (read_char(&state, ';')) {
                         Binding* b = get_binding(name);
-                        result.type = REGISTER;
-                        result.reg = rd;
-                        add_instr_set_mem(&seg_text, b->loc, &result);
+                        //result->type = REGISTER;
+                        //result->reg = rd;
+                        //add_instr_set_mem(&seg_text, b->loc, &result);
                         end_of_statement = true;
                     }
                 }
