@@ -44,6 +44,7 @@ struct Ast {
         } fn_block;
         struct AstIf {
             struct Ast* parent;
+            struct Ast* head;
             AstList children;
         } if_block;
         struct AstExit {
@@ -138,10 +139,13 @@ ast_new_fn(Binding* binding) {
 }
 
 static Ast*
-ast_new_if() {
+ast_new_if(Ast* head) {
     Ast* a = mem_alloc(&ast_mem, Ast);
     *a = (Ast) {
         .type = AST_IF,
+        .if_block = {
+            .head = head,
+        },
     };
     return a;
 }
@@ -216,7 +220,9 @@ print_ast_part(Ast* ast, int indent) {
     int insp = indent * 4;
     switch (a->type) {
     case AST_IF: {
-        fprintf(stderr, "%*sif {\n", insp, "");
+        fprintf(stderr, "%*sif ", insp, "");
+        print_ast_part(a->if_block.head, indent);
+        fprintf(stderr, " {\n");
         print_ast_children(&a->if_block.children, indent + 1);
         fprintf(stderr, "%*s}\n", insp, "");
     } break;

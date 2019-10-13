@@ -460,7 +460,7 @@ compile(struct file* file) {
             if (str_eq(result->label.name, STR("if"))) {
                 Ast* rd = compile_expr(&state);
                 if (read_char(&state, '{')) {
-                    block = ast_add(block, ast_new_if());
+                    block = ast_add(block, ast_new_if(rd));
                     end_of_statement = true;
                 }
             } else if (str_eq(result->label.name, STR("stop"))) {
