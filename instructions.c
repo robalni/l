@@ -155,8 +155,8 @@ into_reg(Segment* seg, const Result* r) {
 
 static void
 add_instr_exit(Segment* seg, const Result* r) {
-    assert(r->type == REGISTER);
-    instr_rv64_add(seg, REG_A0, REG_ZERO, r->reg);
+    enum reg reg = into_reg(seg, r);
+    instr_rv64_add(seg, REG_A0, REG_ZERO, reg);
     add_instr_li(seg, REG_A7, SYS_EXIT);
     add_instr_ecall(seg);
 }
