@@ -1,22 +1,38 @@
 enum Rv64Type {
     RV64_I,
     RV64_R,
+    RV64_RI64,
+    RV64_NONE,
 };
 
 typedef void (*Rv64FnR)(Segment*, enum reg, enum reg, enum reg);
+typedef void (*Rv64FnRi64)(Segment*, enum reg, uint64_t);
+typedef void (*Rv64FnNone)(Segment*);
 
 struct Rv64Instr {
-    Rv64Type type;
+    enum Rv64Type type;
     union {
         struct {
+            Rv64FnNone fn;
+        } none;
+        struct {
             Rv64FnR fn;
-            int rd;
-            int rs1;
-            int rs2;
+            Vreg* rd;
+            Vreg* rs1;
+            Vreg* rs2;
         } r;
+        struct {
+            Rv64FnRi64 fn;
+            Vreg* rd;
+            uint64_t imm;
+        } ri64;
     };
 };
 typedef struct Rv64Instr Rv64Instr;
+
+static void
+rv64_add(Segment* seg, Rv64Instr* instr) {
+}
 
 enum syscall {
     SYS_READ = 63,
@@ -24,140 +40,132 @@ enum syscall {
     SYS_EXIT = 93,
 };
 
+// rd must be a register.
 static void
-rv64_add_set_mem(Segment* seg, Location loc, const Result* res) {
-    if (res->type == NUMBER) {
-        rv64_add_li(seg, REG_T0, res->number);
-    } else if (res->type == REGISTER && res->reg != REG_T0) {
-        instr_rv64_add(seg, REG_T0, REG_ZERO, res->reg);
-    }
-    size_t addr = loc.seg->addr + loc.offset;
-    rv64_add_lui(seg, REG_T1, addr);
-    rv64_add_sw(seg, REG_T0, addr, REG_T1);
+rv64_add_load(Segment* seg, Vreg* rd, Binding* b) {
+    assert(rd->state == VREG_USED || rd->state == VREG_EXACT);
+    abort();
+    // TODO: Load different sizes.
+    // TODO: Add the instruction.
+    //Rv64Instr instr = {
+    //    .type = RV64_R,
+    //    .r = {
+    //        .fn = ,
+    //        .rd = rd,
+    //        .rs1 = l,
+    //        .rs2 = r,
+    //    },
+    //};
+    //rv64_add(seg, &instr);
 }
 
 static void
-rv64_add_load(Segment* seg, Var dest, const Binding* src) {
-    size_t addr = src->loc.seg->addr + src->loc.offset;
-    rv64_add_lui(seg, REG_T1, addr);
-    rv64_add_lw(seg, dest, addr, REG_T1);
+rv64_add_li(Segment* seg, Vreg* rd, const Ast* val) {
+    assert(val->type == AST_NUM);
+    uint64_t imm = val->num.u;
+    Rv64Instr instr = {
+        .type = RV64_RI64,
+        .ri64 = {
+            .fn = rv64_write_li,
+            .rd = rd,
+            .imm = imm,
+        },
+    };
+    rv64_add(seg, &instr);
 }
 
 static void
-rv64_add_copy(Segment* seg, enum reg dest, const Result* src) {
-    switch (src->type) {
-    case LABEL: {
-        Binding* b = get_binding(src->label);
-        rv64_add_load(seg, dest, b);
-    } break;
-    case REGISTER:
-        instr_rv64_add(seg, dest, REG_ZERO, src->reg);
-        break;
-    case NUMBER:
-        rv64_add_li(seg, dest, src->number);
-        break;
-    }
+rv64_add_li_static(Segment* seg, Vreg* rd, uint64_t val) {
+    Rv64Instr instr = {
+        .type = RV64_RI64,
+        .ri64 = {
+            .fn = rv64_write_li,
+            .rd = rd,
+            .imm = val,
+        },
+    };
+    rv64_add(seg, &instr);
 }
 
-static enum reg
-into_reg(Segment* seg, const Result* r) {
-    enum reg dest;
-    switch (r->type) {
-    case LABEL: {
-        Binding* b = get_binding(r->label);
-        dest = alloc_reg();
-        rv64_add_load(seg, dest, b);
-    } break;
-    case REGISTER:
-        dest = r->reg;
+static void
+rv64_add_mv(Segment* seg, Vreg* rd, Vreg* r) {
+    abort();
+}
+
+static Vreg*
+into_reg(Segment* seg, Vreg* r) {
+    Vreg* dest;
+    switch (r->state) {
+    case VREG_MEM:
+        dest = alloc_vreg();
+        rv64_add_load(seg, dest, r->binding);
         break;
-    case NUMBER:
-        dest = alloc_reg();
-        rv64_add_li(seg, dest, r->number);
+    case VREG_EXACT:
+        dest = r;
+        break;
+    case VREG_STATIC:
+        dest = alloc_vreg();
+        rv64_add_li(seg, dest, r->val);
         break;
     }
     return dest;
 }
 
-static enum reg
-into_this_reg(Segment* seg, const Result* r, enum reg into) {
-    enum reg dest;
-    switch (r->type) {
-    case LABEL: {
-        Binding* b = get_binding(r->label);
+static Vreg*
+into_this_reg(Segment* seg, Vreg* r, enum reg into) {
+    Vreg* dest;
+    switch (r->state) {
+    case VREG_MEM:
         dest = alloc_this_reg(into);
-        rv64_add_load(seg, dest, b);
-    } break;
-    case REGISTER:
+        rv64_add_load(seg, dest, r->binding);
+        break;
+    case VREG_EXACT:
         dest = alloc_this_reg(into);
         if (r->reg != into) {
-            rv64_add_mv(seg, into, r->reg);
+            rv64_add_mv(seg, dest, r);
         }
         break;
-    case NUMBER:
+    case VREG_STATIC:
         dest = alloc_this_reg(into);
-        rv64_add_li(seg, dest, r->number);
+        rv64_add_li(seg, dest, r->val);
         break;
     }
     return dest;
 }
 
 static void
-rv64_add_exit(Segment* seg, const Result* r) {
-    Reg a0 = into_this_reg(seg, r);
-    reg_should_be(a0, REG_A0);
-    Reg a7 = alloc_reg();
-    reg_should_be(a7, REG_A7);
-    rv64_add_li(seg, a7, SYS_EXIT);
-    rv64_add_ecall(seg);
-    reg_last_use(seg, a0);
-    reg_last_use(seg, a7);
-}
-
-static enum reg
-rv64_add_op(Segment* seg, enum oper o, const Result* l, const Result* r) {
-    enum reg reg_l, reg_r;
-    if (l->type == REGISTER) {
-        reg_l = l->reg;
-    } else {
-        reg_l = alloc_reg();
-        rv64_add_copy(seg, reg_l, l);
-    }
-    if (r->type == REGISTER) {
-        reg_r = r->reg;
-    } else {
-        reg_r = alloc_reg();
-        rv64_add_copy(seg, reg_r, r);
-    }
-    switch (o) {
-    case OP_PLUS:
-        instr_rv64_add(seg, reg_l, reg_l, reg_r);
-        break;
-    case OP_TIMES:
-        instr_rv64_mul(seg, reg_l, reg_l, reg_r);
-        break;
-    }
-    free_reg(reg_r);
-    return reg_l;
+rv64_add_ecall(Segment* seg) {
+    Rv64Instr instr = {
+        .type = RV64_NONE,
+        .none = {
+            .fn = rv64_write_ecall,
+        },
+    };
+    rv64_add(seg, &instr);
 }
 
 static void
-rv64_add_add(Segment* seg, const Result* l, const Result* r) {
-    if (l->type == LABEL) {
-        Binding* b = get_binding(l->label);
-        size_t addr = b->loc.seg->addr + b->loc.offset;
-        rv64_add_lui(seg, REG_T3, addr);
-        rv64_add_lw(seg, REG_T0, addr, REG_T3);
-    } else if (l->type == NUMBER) {
-        rv64_add_li(seg, REG_T0, l->number);
-    }
-    if (r->type == LABEL) {
-        Binding* b = get_binding(r->label);
-        size_t addr = b->loc.seg->addr + b->loc.offset;
-        rv64_add_lui(seg, REG_T4, addr);
-        rv64_add_lw(seg, REG_T2, addr, REG_T4);
-    } else if (r->type == NUMBER) {
-        rv64_add_li(seg, REG_T2, r->number);
-    }
-    instr_rv64_add(seg, REG_T0, REG_T0, REG_T2);
+rv64_add_exit(Segment* seg, Vreg* r) {
+    Vreg* a0 = into_this_reg(seg, r, REG_A0);
+    Vreg* a7 = alloc_this_reg(REG_A7);
+    rv64_add_li_static(seg, a7, SYS_EXIT);
+    rv64_add_ecall(seg);
+}
+
+static Vreg*
+rv64_add_add(Segment* seg, Vreg* l, Vreg* r) {
+    l = into_reg(seg, l);
+    r = into_reg(seg, r);
+    Vreg* rd = alloc_vreg();
+    Rv64Instr instr = {
+        .type = RV64_R,
+        .r = {
+            .fn = rv64_write_add,
+            .rd = rd,
+            .rs1 = l,
+            .rs2 = r,
+        },
+    };
+    rv64_add(seg, &instr);
+    return rd;
 }

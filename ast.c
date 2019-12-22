@@ -16,6 +16,7 @@ enum AstType {
     AST_EXIT,
     AST_STOP,
     AST_ASSIGN,
+    AST_VAR,
 };
 
 struct Ast {
@@ -57,6 +58,10 @@ struct Ast {
             Binding* binding;
             struct Ast* val;
         } assign;
+        struct AstVar {
+            struct Ast* value;
+            Binding* binding;
+        } var;
     };
 };
 typedef struct Ast Ast;
@@ -197,6 +202,19 @@ ast_new_assign(Binding* b, Ast* val) {
         .assign = {
             .binding = b,
             .val = val,
+        },
+    };
+    return a;
+}
+
+static Ast*
+ast_new_var(Ast* val, Binding* b) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_VAR,
+        .var = {
+            .value = val,
+            .binding = b,
         },
     };
     return a;

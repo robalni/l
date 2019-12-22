@@ -20,19 +20,20 @@ enum reg {
     REG_T6 = 31,
 };
 
+struct Vreg;
 struct reg_alloc_info {
     enum reg reg;
-    bool used;
+    struct Vreg* used_in;
 };
 
 struct reg_alloc_info regs[] = {
-    {REG_T0, false},
-    {REG_T1, false},
-    {REG_T2, false},
-    {REG_T3, false},
-    {REG_T4, false},
-    {REG_T5, false},
-    {REG_T6, false},
+    {REG_T0, NULL},
+    {REG_T1, NULL},
+    {REG_T2, NULL},
+    {REG_T3, NULL},
+    {REG_T4, NULL},
+    {REG_T5, NULL},
+    {REG_T6, NULL},
 };
 
 static const char*
@@ -48,22 +49,95 @@ reg_name(enum reg r) {
     return names[r];
 }
 
-static enum reg
-alloc_reg() {
-    for (size_t i = 0; i < ARR_LEN(regs); i++) {
-        if (!regs[i].used) {
-            regs[i].used = true;
-            return regs[i].reg;
+enum VregState {
+    VREG_UNUSED,
+    VREG_USED,
+    VREG_EXACT,    // This vreg must be a specific register.
+    VREG_STATIC,   // Value known at compile time.
+    VREG_MEM,      // The value is in memory at unknown address.
+    VREG_MEM_ADDR, // The value is in memory and has an address.
+};
+
+// Variable register.  This is not any specific register.  It doesn't
+// even need to be a real register but can be memory or anything.
+struct Vreg {
+    enum VregState state;
+    union {
+        enum reg reg;    // VREG_EXACT
+        const Ast* val;  // VREG_STATIC
+        Location loc;    // VREG_MEM_ADDR
+    };
+    Binding* binding;
+};
+typedef struct Vreg Vreg;
+
+#define MAX_VREGS 100
+static Vreg vregs[MAX_VREGS];
+
+static size_t
+find_first_free_vreg_index() {
+    for (size_t i = 0; i < MAX_VREGS; i++) {
+        if (vregs[i].state == VREG_UNUSED) {
+            return i;
         }
     }
-    assert(false);
+    abort();
+}
+
+static Vreg*
+alloc_vreg() {
+    Vreg* v = &vregs[find_first_free_vreg_index()];
+    v->state = VREG_USED;
+    return v;
+}
+
+static Vreg*
+alloc_vreg_mem() {
+    Vreg* v = &vregs[find_first_free_vreg_index()];
+    v->state = VREG_MEM;
+    return v;
+}
+
+static Vreg*
+alloc_this_reg_assume_unused(enum reg r) {
+    Vreg* v = &vregs[find_first_free_vreg_index()];
+    v->state = VREG_EXACT;
+    v->reg = r;
+    return v;
+}
+
+// Returns the vreg that has allocated this specific reg or NULL.
+static Vreg*
+get_used_reg(enum reg r) {
+    for (size_t i = 0; i < MAX_VREGS; i++) {
+        if (vregs[i].state == VREG_EXACT) {
+            return &vregs[i];
+        }
+    }
+    return NULL;
+}
+
+static Vreg*
+move_vreg(Vreg* r) {
+    Vreg* new_vreg = alloc_vreg();
+    *new_vreg = *r;
+    return new_vreg;
+}
+
+static Vreg*
+alloc_this_reg(enum reg r) {
+    Vreg* v = get_used_reg(r);
+    if (v == NULL) {
+        // r is unused; we can use it.
+        v = alloc_this_reg_assume_unused(r);
+    } else {
+        // r is used; we must move it to another register.
+        Vreg* new_vreg = move_vreg(v);
+    }
+    return v;
 }
 
 static void
-free_reg(enum reg reg) {
-    for (size_t i = 0; i < ARR_LEN(regs); i++) {
-        if (regs[i].reg == reg) {
-            regs[i].used = false;
-        }
-    }
+free_vreg(Vreg* v) {
+    v->state = VREG_UNUSED;
 }

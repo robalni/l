@@ -29,7 +29,7 @@ rv64_write_mul(Segment* seg, enum reg rd, enum reg rs1, enum reg rs2) {
 }
 
 static void
-rv64_write_li(Segment* seg, enum reg rd, int16_t n) {
+rv64_write_li(Segment* seg, enum reg rd, uint64_t n) {
     uint32_t i;
     if ((n & 0b111111) == n) {
         i = 0b0100000000000001 | (rd << 7) | (BITS(n, 0, 4) << 2)

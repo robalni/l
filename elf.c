@@ -19,7 +19,9 @@ write_elf_file(const char* filename) {
         fprintf(stderr, "No main function.\n");
         return;
     }
-    size_t entry = mainfn->loc.seg->addr + mainfn->loc.offset;
+    assert(mainfn->last_vreg->state == VREG_MEM_ADDR);
+    Location loc = mainfn->last_vreg->loc;
+    size_t entry = loc.seg->addr + loc.offset;
 
     Elf64_Ehdr elf_header = {
         .e_ident = {

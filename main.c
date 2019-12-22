@@ -38,6 +38,10 @@ struct segment {
     char* data;
     size_t len;
     size_t addr;
+
+    // Type is *Instr
+    void* instrs;
+    size_t n_instrs;
 };
 typedef struct segment Segment;
 
@@ -48,6 +52,8 @@ init_seg(Segment* seg, const char* name, size_t addr) {
     seg->len = 0;
     seg->name = name;
     seg->addr = addr;
+    seg->instrs = NULL;
+    seg->n_instrs = 0;
 }
 
 static void
@@ -90,26 +96,35 @@ add_type(Str name, size_t size) {
     return types + n_types - 1;
 }
 
-struct location {
+struct Location {
     Segment* seg;
     size_t offset;
 };
-typedef struct location Location;
+typedef struct Location Location;
 
-struct binding {
+struct Vreg;
+
+struct Binding {
     Str name;
     const Type* type;
-    Location loc;
+    struct Vreg* last_vreg;
 };
-typedef struct binding Binding;
+typedef struct Binding Binding;
 
-static Binding bindings[100];
+#define MAX_BINDINGS 100
+static Binding bindings[MAX_BINDINGS];
 static size_t n_bindings;
 
+struct Vreg;
+
 static Binding*
-add_binding(Str name, const Type* type, Location loc) {
-    if (n_bindings < 100) {
-        bindings[n_bindings] = (Binding){name, type, loc};
+add_binding(Str name, const Type* type, struct Vreg* r) {
+    if (n_bindings < MAX_BINDINGS) {
+        bindings[n_bindings] = (Binding){
+            .name = name,
+            .type = type,
+            .last_vreg = r,
+        };
         n_bindings++;
         return bindings + n_bindings - 1;
     }
@@ -131,10 +146,9 @@ static void
 print_bindings() {
     for (size_t i = 0; i < n_bindings; i++) {
         Binding* b = bindings + i;
-        fprintf(stderr, "%.*s %.*s %s(%lX)\n",
+        fprintf(stderr, "%.*s %.*s\n",
                 (int)b->name.len, b->name.data,
-                (int)b->type->name.len, b->type->name.data,
-                b->loc.seg->name, b->loc.offset);
+                (int)b->type->name.len, b->type->name.data);
     }
 }
 
@@ -194,7 +208,9 @@ typedef struct result Result;
 
 #include "regs.c"
 
-#include "instructions.c"
+#include "final_instructions.c"
+
+#include "var_instructions.c"
 
 static bool
 is_digit(char c) {
@@ -431,18 +447,32 @@ compile_expr(State* state) {
 
 #define ast_for(a, list) \
     for (const Ast* a = list.first; a; a = a->next)
-static Result
+static Vreg*
 compile_ast_expr(const Ast* ast) {
     switch (ast->type) {
     case AST_NUM: {
-        return (Result){
-            .type = NUMBER,
-            .number = ast->num.i,  // TODO: Can be unsigned.
-        };
+        Vreg* v = alloc_vreg();
+        v->state = VREG_STATIC;
+        v->val = ast;
+        return v;
     } break;
     case AST_OPER: {
-        Result l = compile_ast_expr(ast->oper.l);
-        Result r = compile_ast_expr(ast->oper.r);
+        const struct AstOper* oper = &ast->oper;
+        Vreg* l = compile_ast_expr(oper->l);
+        Vreg* r = compile_ast_expr(oper->r);
+        if (l->state == VREG_STATIC && r->state == VREG_STATIC) {
+            l->val = ast;
+            free_vreg(r);
+            return l;
+        } else {
+            switch (oper->oper) {
+            case OP_PLUS:
+                rv64_add_add(&seg_text, l, r);
+                break;
+            default:
+                abort();
+            }
+        }
     } break;
     }
 }
@@ -452,8 +482,8 @@ compile_ast_fn(const struct AstFn* fn) {
     ast_for(b, fn->children) {
         switch (b->type) {
         case AST_EXIT: {
-            Result r = compile_ast_expr(b->exit.val);
-            add_instr_exit(&seg_text, &r);
+            Vreg* r = compile_ast_expr(b->exit.val);
+            rv64_add_exit(&seg_text, r);
         } break;
         }
     }
@@ -528,20 +558,19 @@ compile(struct file* file) {
                     if (read_number(&state, &result)) {
                         if (read_char(&state, ';')) {
                             const Type* t = get_type(type);
-                            size_t o = add_data(&seg_data, &result->num.i,
-                                                t->size);
-                            Location l = (Location){&seg_data, o};
-                            add_binding(name, t, l);
+                            Vreg* r = alloc_vreg_mem();
+                            Binding* b = add_binding(name, t, r);
+                            r->binding = b;
+                            ast_add(block, ast_new_var(result, b));
                             end_of_statement = true;
                         }
                     } else if (read_char(&state, '(')) {
                         if (read_char(&state, ')')) {
                             if (read_char(&state, '{')) {
                                 const Type* t = get_type(type);
-                                Location l = (Location){
-                                    &seg_text, seg_text.len,
-                                };
-                                Binding* b = add_binding(name, t, l);
+                                Vreg* r = alloc_vreg_mem();
+                                Binding* b = add_binding(name, t, r);
+                                r->binding = b;
                                 inside_function = b;
                                 block = ast_add(block, ast_new_fn(b));
                                 end_of_statement = true;
