@@ -614,11 +614,6 @@ compile(struct File* file) {
                     block = ast_add(block, ast_new_if(rd));
                     end_of_statement = true;
                 }
-            } else if (str_eq(result->label.name, STR("stop"))) {
-                if (read_char(&state, ';')) {
-                    ast_add(block, ast_new_stop());
-                    end_of_statement = true;
-                }
             } else if (str_eq(result->label.name, STR("exit"))) {
                 Ast* val = compile_expr(&state);
                 if (read_char(&state, ';')) {
