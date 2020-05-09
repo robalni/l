@@ -20,20 +20,28 @@ enum reg {
     REG_T6 = 31,
 };
 
+static uint32_t used_regs;
+
+static enum reg
+use_free_reg() {
+    for (size_t i = 1; i < 32; i++) {
+        if (!((used_regs >> i) & 1)) {
+            used_regs |= 1 << i;
+            return i;
+        }
+    }
+    abort();
+}
+
+static void
+unuse_reg(enum reg reg) {
+    used_regs &= ~(1 << reg);
+}
+
 struct Vreg;
 struct reg_alloc_info {
     enum reg reg;
     struct Vreg* used_in;
-};
-
-struct reg_alloc_info regs[] = {
-    {REG_T0, NULL},
-    {REG_T1, NULL},
-    {REG_T2, NULL},
-    {REG_T3, NULL},
-    {REG_T4, NULL},
-    {REG_T5, NULL},
-    {REG_T6, NULL},
 };
 
 static const char*
@@ -110,7 +118,7 @@ alloc_this_reg_assume_unused(enum reg r) {
 static Vreg*
 get_used_reg(enum reg r) {
     for (size_t i = 0; i < MAX_VREGS; i++) {
-        if (vregs[i].state == VREG_EXACT) {
+        if (vregs[i].state == VREG_EXACT && vregs[i].reg == r) {
             return &vregs[i];
         }
     }
@@ -140,4 +148,16 @@ alloc_this_reg(enum reg r) {
 static void
 free_vreg(Vreg* v) {
     v->state = VREG_UNUSED;
+}
+
+static void
+vreg_set_state_exact(Vreg* v, enum reg reg) {
+    v->state = VREG_EXACT;
+    v->reg = reg;
+}
+
+static void
+vreg_set_state_mem_addr(Vreg* v, Segment* seg, uint64_t addr) {
+    v->state = VREG_MEM_ADDR;
+    v->loc = (Location){seg, addr};
 }

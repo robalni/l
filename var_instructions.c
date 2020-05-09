@@ -3,6 +3,9 @@ enum Rv64Type {
     RV64_R,
     RV64_RI64,
     RV64_NONE,
+
+    // Not a real instruction
+    FN_START,
 };
 
 typedef void (*Rv64FnR)(Segment*, enum reg, enum reg, enum reg);
@@ -26,12 +29,24 @@ struct Rv64Instr {
             Vreg* rd;
             uint64_t imm;
         } ri64;
+        struct {
+            Binding* binding;
+        } fn_start;
     };
 };
 typedef struct Rv64Instr Rv64Instr;
 
+#define MAX_VINSTRS 1000
+static Rv64Instr vinstrs[MAX_VINSTRS];
+static size_t n_vinstrs;
+
 static void
-rv64_add(Segment* seg, Rv64Instr* instr) {
+rv64_add(Segment* seg, Rv64Instr instr) {
+    if (n_vinstrs >= MAX_VINSTRS) {
+        abort();
+    }
+    vinstrs[n_vinstrs] = instr;
+    n_vinstrs++;
 }
 
 enum syscall {
@@ -56,7 +71,7 @@ rv64_add_load(Segment* seg, Vreg* rd, Binding* b) {
     //        .rs2 = r,
     //    },
     //};
-    //rv64_add(seg, &instr);
+    //rv64_add(seg, instr);
 }
 
 static void
@@ -71,7 +86,7 @@ rv64_add_li(Segment* seg, Vreg* rd, const Ast* val) {
             .imm = imm,
         },
     };
-    rv64_add(seg, &instr);
+    rv64_add(seg, instr);
 }
 
 static void
@@ -84,7 +99,7 @@ rv64_add_li_static(Segment* seg, Vreg* rd, uint64_t val) {
             .imm = val,
         },
     };
-    rv64_add(seg, &instr);
+    rv64_add(seg, instr);
 }
 
 static void
@@ -96,6 +111,9 @@ static Vreg*
 into_reg(Segment* seg, Vreg* r) {
     Vreg* dest;
     switch (r->state) {
+    case VREG_USED:
+        dest = r;
+        break;
     case VREG_MEM:
         dest = alloc_vreg();
         rv64_add_load(seg, dest, r->binding);
@@ -115,6 +133,9 @@ static Vreg*
 into_this_reg(Segment* seg, Vreg* r, enum reg into) {
     Vreg* dest;
     switch (r->state) {
+    case VREG_USED:
+        vreg_set_state_exact(r, into);
+        break;
     case VREG_MEM:
         dest = alloc_this_reg(into);
         rv64_add_load(seg, dest, r->binding);
@@ -141,7 +162,7 @@ rv64_add_ecall(Segment* seg) {
             .fn = rv64_write_ecall,
         },
     };
-    rv64_add(seg, &instr);
+    rv64_add(seg, instr);
 }
 
 static void
@@ -166,6 +187,15 @@ rv64_add_add(Segment* seg, Vreg* l, Vreg* r) {
             .rs2 = r,
         },
     };
-    rv64_add(seg, &instr);
+    rv64_add(seg, instr);
     return rd;
+}
+
+static void
+add_function_start(Segment* seg, Binding* binding) {
+    Rv64Instr instr = {
+        .type = FN_START,
+        .fn_start = binding,
+    };
+    rv64_add(seg, instr);
 }

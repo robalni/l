@@ -220,6 +220,22 @@ ast_new_var(Ast* val, Binding* b) {
     return a;
 }
 
+static uint64_t
+ast_calc_static_value(Ast* ast) {
+    switch (ast->type) {
+    case AST_NUM: {
+        return ast->num.u;
+    } break;
+    case AST_OPER: {
+        uint64_t l = ast_calc_static_value(ast->oper.l);
+        uint64_t r = ast_calc_static_value(ast->oper.r);
+        return l + r;
+    } break;
+    default:
+        assert(false);
+    }
+}
+
 static void
 print_ast_part(Ast* ast, int indent);
 

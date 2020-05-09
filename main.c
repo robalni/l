@@ -456,18 +456,24 @@ compile_ast_expr(const Ast* ast) {
         v->val = ast;
         return v;
     } break;
+    case AST_LABEL: {
+        Vreg* v = alloc_vreg();
+        v->state = VREG_USED;
+        v->binding = get_binding(ast->label.name);
+        return v;
+    } break;
     case AST_OPER: {
         const struct AstOper* oper = &ast->oper;
         Vreg* l = compile_ast_expr(oper->l);
         Vreg* r = compile_ast_expr(oper->r);
-        if (l->state == VREG_STATIC && r->state == VREG_STATIC) {
+        if (0 && l->state == VREG_STATIC && r->state == VREG_STATIC) {
             l->val = ast;
             free_vreg(r);
             return l;
         } else {
             switch (oper->oper) {
             case OP_PLUS:
-                rv64_add_add(&seg_text, l, r);
+                return rv64_add_add(&seg_text, l, r);
                 break;
             default:
                 abort();
@@ -479,6 +485,7 @@ compile_ast_expr(const Ast* ast) {
 
 static void
 compile_ast_fn(const struct AstFn* fn) {
+    add_function_start(&seg_text, fn->name);
     ast_for(b, fn->children) {
         switch (b->type) {
         case AST_EXIT: {
@@ -490,7 +497,7 @@ compile_ast_fn(const struct AstFn* fn) {
 }
 
 static void
-compile_ast(const Ast* root) {
+compile_ast_root(const Ast* root) {
     ast_for(a, root->root.children) {
         switch (a->type) {
         case AST_FN: {
@@ -500,6 +507,73 @@ compile_ast(const Ast* root) {
     }
 }
 #undef ast_for
+
+// Decide the location of vregs.
+static void
+determine_vregs() {
+    for (size_t i = 0; i < n_vinstrs; i++) {
+        Rv64Instr *instr = &vinstrs[i];
+        switch (instr->type) {
+        case RV64_R:
+            if (instr->r.rs1->state == VREG_USED) {
+                abort();
+            }
+            if (instr->r.rs2->state == VREG_USED) {
+                abort();
+            }
+            if (instr->r.rd->state == VREG_USED) {
+                enum reg reg = use_free_reg();
+                vreg_set_state_exact(instr->r.rd, reg);
+            }
+            break;
+        case RV64_RI64:
+            if (instr->ri64.rd->state != VREG_USED) {
+                continue;
+            }
+            fprintf(stderr, "%d, %d\n", instr->ri64.rd->state, instr->ri64.imm);
+            enum reg reg = use_free_reg();
+            vreg_set_state_exact(instr->ri64.rd, reg);
+            break;
+        }
+    }
+}
+
+static void
+compile_instrs() {
+    for (size_t i = 0; i < n_vinstrs; i++) {
+        const Rv64Instr *instr = &vinstrs[i];
+        switch (instr->type) {
+        case RV64_R:
+            fprintf(stderr, "VINSTR: RV64_R %d, %d, %d\n", instr->r.rd->reg, instr->r.rs1->reg, instr->r.rs2->reg);
+            assert(instr->r.rd->state == VREG_EXACT);
+            assert(instr->r.rs1->state == VREG_EXACT);
+            assert(instr->r.rs2->state == VREG_EXACT);
+            instr->r.fn(&seg_text,
+                        instr->r.rd->reg,
+                        instr->r.rs1->reg,
+                        instr->r.rs2->reg);
+            break;
+        case RV64_RI64:
+            fprintf(stderr, "VINSTR: RV64_RI64 %d %d\n", instr->ri64.rd->reg, instr->ri64.imm);
+            assert(instr->ri64.rd->state == VREG_EXACT);
+            instr->ri64.fn(&seg_text,
+                           instr->ri64.rd->reg,
+                           instr->ri64.imm);
+            break;
+        case RV64_NONE:
+            fprintf(stderr, "VINSTR: RV64_NONE\n");
+            instr->none.fn(&seg_text);
+            break;
+        case FN_START:
+            fprintf(stderr, "VINSTR: FN_START\n");
+            vreg_set_state_mem_addr(instr->fn_start.binding->last_vreg, &seg_text, seg_text.len);
+            break;
+        default:
+            fprintf(stderr, "VINSTR: Unknown\n");
+            break;
+        }
+    }
+}
 
 static void
 compile(struct file* file) {
@@ -611,7 +685,12 @@ compile(struct file* file) {
 
 after_loop:
 
-    compile_ast(&ast_root);
+    compile_ast_root(&ast_root);
+    fprintf(stderr, "\nAst:\n");
+    print_ast(&ast_root);
+
+    determine_vregs();
+    compile_instrs();
 
     fprintf(stderr, "\nData segment:\n");
     print_segment(&seg_data);
@@ -619,8 +698,6 @@ after_loop:
     print_segment(&seg_text);
     fprintf(stderr, "\nBindings:\n");
     print_bindings();
-    fprintf(stderr, "\nAst:\n");
-    print_ast(&ast_root);
 
     write_elf_file("a");
 }
