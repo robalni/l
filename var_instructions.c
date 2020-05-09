@@ -115,6 +115,7 @@ into_reg(Segment* seg, Vreg* r) {
         dest = r;
         break;
     case VREG_MEM:
+    case VREG_MEM_ADDR:
         dest = alloc_vreg();
         rv64_add_load(seg, dest, r->binding);
         break;
@@ -140,6 +141,7 @@ into_this_reg(Segment* seg, Vreg* r, enum reg into) {
         vreg_set_state_exact(r, into);
         break;
     case VREG_MEM:
+    case VREG_MEM_ADDR:
         dest = alloc_this_reg(into);
         rv64_add_load(seg, dest, r->binding);
         break;
