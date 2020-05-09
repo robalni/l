@@ -480,6 +480,15 @@ compile_ast_expr(const Ast* ast) {
             }
         }
     } break;
+    // These do not belong inside an expression.
+    case AST_ROOT:
+    case AST_FN:
+    case AST_IF:
+    case AST_EXIT:
+    case AST_ASSIGN:
+    case AST_VAR:
+        abort();
+        break;
     }
 }
 
@@ -492,6 +501,14 @@ compile_ast_fn(const struct AstFn* fn) {
             Vreg* r = compile_ast_expr(b->exit.val);
             rv64_add_exit(&seg_text, r);
         } break;
+        // These do not belong inside a function.
+        case AST_ROOT:
+        case AST_FN:
+        case AST_NUM:
+        case AST_LABEL:
+        case AST_OPER:
+            abort();
+            break;
         }
     }
 }
@@ -503,6 +520,16 @@ compile_ast_root(const Ast* root) {
         case AST_FN: {
             compile_ast_fn(&a->fn_block);
         } break;
+        // These do not belong in the root.
+        case AST_ROOT:
+        case AST_NUM:
+        case AST_LABEL:
+        case AST_OPER:
+        case AST_IF:
+        case AST_EXIT:
+        case AST_ASSIGN:
+            abort();
+            break;
         }
     }
 }
