@@ -59,6 +59,7 @@ reg_name(enum reg r) {
 
 enum VregState {
     VREG_UNUSED,
+    VREG_AST,
     VREG_USED,
     VREG_EXACT,    // This vreg must be a specific register.
     VREG_STATIC,   // Value known at compile time.
@@ -71,6 +72,7 @@ enum VregState {
 struct Vreg {
     enum VregState state;
     union {
+        const Ast* ast;  // VREG_AST
         enum reg reg;    // VREG_EXACT
         const Ast* val;  // VREG_STATIC
         Location loc;    // VREG_MEM_ADDR
@@ -103,6 +105,13 @@ static Vreg*
 alloc_vreg_mem() {
     Vreg* v = &vregs[find_first_free_vreg_index()];
     v->state = VREG_MEM;
+    return v;
+}
+
+static Vreg*
+alloc_vreg_ast() {
+    Vreg* v = &vregs[find_first_free_vreg_index()];
+    v->state = VREG_AST;
     return v;
 }
 

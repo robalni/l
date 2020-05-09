@@ -457,9 +457,18 @@ compile_ast_expr(const Ast* ast) {
         return v;
     } break;
     case AST_LABEL: {
-        Vreg* v = alloc_vreg();
-        v->state = VREG_USED;
-        v->binding = get_binding(ast->label.name);
+        Vreg* v;
+        Binding* b = get_binding(ast->label.name);
+        if (b->last_vreg) {
+            v = b->last_vreg;
+            if (v->state == VREG_AST) {
+                v = compile_ast_expr(v->ast);
+            }
+        } else {
+            v = alloc_vreg();
+            v->state = VREG_USED;
+            v->binding = b;
+        }
         return v;
     } break;
     case AST_OPER: {
@@ -651,13 +660,16 @@ compile(struct File* file) {
                 Str name = result->label.name;
                 if (read_label(&state, &result)) {
                     Str type = result->label.name;
-                    if (read_number(&state, &result)) {
+                    Ast* expr_value = compile_expr(&state);
+                    if (expr_value) {
                         if (read_char(&state, ';')) {
                             const Type* t = get_type(type);
-                            Vreg* r = alloc_vreg_mem();
+                            Vreg* r = alloc_vreg_ast();
                             Binding* b = add_binding(name, t, r);
+                            r->ast = expr_value;
                             r->binding = b;
-                            ast_add(block, ast_new_var(result, b));
+
+                            ast_add(block, ast_new_var(expr_value, b));
                             end_of_statement = true;
                         }
                     } else if (read_char(&state, '(')) {
