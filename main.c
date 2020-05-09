@@ -557,7 +557,7 @@ determine_vregs() {
             if (instr->ri64.rd->state != VREG_USED) {
                 continue;
             }
-            fprintf(stderr, "%d, %d\n", instr->ri64.rd->state, instr->ri64.imm);
+            fprintf(stderr, "%d, %ld\n", instr->ri64.rd->state, instr->ri64.imm);
             enum reg reg = use_free_reg();
             vreg_set_state_exact(instr->ri64.rd, reg);
             break;
@@ -581,7 +581,7 @@ compile_instrs() {
                         instr->r.rs2->reg);
             break;
         case RV64_RI64:
-            fprintf(stderr, "VINSTR: RV64_RI64 %d %d\n", instr->ri64.rd->reg, instr->ri64.imm);
+            fprintf(stderr, "VINSTR: RV64_RI64 %d %ld\n", instr->ri64.rd->reg, instr->ri64.imm);
             assert(instr->ri64.rd->state == VREG_EXACT);
             instr->ri64.fn(&seg_text,
                            instr->ri64.rd->reg,

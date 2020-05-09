@@ -261,7 +261,7 @@ print_ast_part(Ast* ast, int indent) {
     case AST_FN: {
         Binding* b = a->fn_block.name;
         fprintf(stderr, "%*sfn %.*s {\n",
-                insp, "", b->name.len, b->name.data);
+                insp, "", (int)b->name.len, b->name.data);
         print_ast_children(&a->fn_block.children, indent + 1);
         fprintf(stderr, "%*s}\n", insp, "");
     } break;
@@ -277,13 +277,13 @@ print_ast_part(Ast* ast, int indent) {
     } break;
     case AST_NUM: {
         if (ast->num.sign) {
-            fprintf(stderr, "%lld", ast->num.i);
+            fprintf(stderr, "%ld", ast->num.i);
         } else {
-            fprintf(stderr, "%llu", ast->num.u);
+            fprintf(stderr, "%lu", ast->num.u);
         }
     } break;
     case AST_LABEL: {
-        fprintf(stderr, "%.*s", a->label.name.len, a->label.name.data);
+        fprintf(stderr, "%.*s", (int)a->label.name.len, a->label.name.data);
     } break;
     case AST_OPER: {
         struct AstOper* o = &a->oper;
@@ -295,7 +295,7 @@ print_ast_part(Ast* ast, int indent) {
     } break;
     case AST_ASSIGN: {
         Str bn = a->assign.binding->name;
-        fprintf(stderr, "%.*s = ", bn.len, bn.data);
+        fprintf(stderr, "%.*s = ", (int)bn.len, bn.data);
         print_ast_part(a->assign.val, indent);
         fprintf(stderr, "\n");
     } break;
