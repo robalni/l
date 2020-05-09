@@ -39,7 +39,7 @@ unuse_reg(enum reg reg) {
 }
 
 struct Vreg;
-struct reg_alloc_info {
+struct RegAllocInfo {
     enum reg reg;
     struct Vreg* used_in;
 };

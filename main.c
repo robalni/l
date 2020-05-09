@@ -9,11 +9,11 @@
 
 typedef enum {false, true} bool;
 
-struct str {
+struct Str {
     const char* data;
     size_t len;
 };
-typedef struct str Str;
+typedef struct Str Str;
 
 // S must be a string literal or array with size == string length + 1
 #define STR(s) ((Str){s, sizeof s - 1})
@@ -33,7 +33,7 @@ str_eq(Str a, Str b) {
     return true;
 }
 
-struct segment {
+struct Segment {
     const char* name;
     char* data;
     size_t len;
@@ -43,7 +43,7 @@ struct segment {
     void* instrs;
     size_t n_instrs;
 };
-typedef struct segment Segment;
+typedef struct Segment Segment;
 
 static void
 init_seg(Segment* seg, const char* name, size_t addr) {
@@ -70,11 +70,11 @@ print_segment(Segment* seg) {
 static Segment seg_data;
 static Segment seg_text;
 
-struct type {
+struct Type {
     Str name;
     size_t size;
 };
-typedef struct type Type;
+typedef struct Type Type;
 
 static Type types[100];
 static size_t n_types;
@@ -161,17 +161,17 @@ add_data(Segment* segment, void* data, size_t size) {
     return segment->len - size;
 }
 
-struct file {
+struct File {
     const char* name;
     char* content;
     size_t size;
 };
 
-struct state {
-    const struct file* file;
+struct State {
+    const struct File* file;
     size_t offset;
 };
-typedef struct state State;
+typedef struct State State;
 
 enum oper {
     OP_PLUS,
@@ -191,7 +191,7 @@ oper_to_str(enum oper o) {
 enum result_type {
     LABEL, NUMBER, REGISTER,
 };
-struct result {
+struct Result {
     enum result_type type;
     union {
         Str label;
@@ -200,7 +200,7 @@ struct result {
         enum oper oper;
     };
 };
-typedef struct result Result;
+typedef struct Result Result;
 
 #include "mem.c"
 
@@ -353,16 +353,16 @@ print_error(const char* msg, State* s) {
 
 static bool
 higher_precedence(enum oper a, enum oper b) {
-    struct prec {
+    struct Prec {
         enum oper op;
         int prec;
     };
-    struct prec p[] = {
+    struct Prec p[] = {
         {OP_TIMES, 13},
         {OP_PLUS, 12},
         {OP_LESS, 10},
     };
-    struct prec pa, pb;
+    struct Prec pa, pb;
     for (size_t i = 0; i < ARR_LEN(p); i++) {
         if (p[i].op == a) {
             pa = p[i];
@@ -375,14 +375,14 @@ higher_precedence(enum oper a, enum oper b) {
 
 static Ast*
 compile_expr(State* state) {
-    struct expr_frame {
+    struct ExprFrame {
         Ast* l;
         enum oper op;
     };
 #define MAX_N_EXPR_FRAMES 10
-    struct expr_frame expr_stack[MAX_N_EXPR_FRAMES];
+    struct ExprFrame expr_stack[MAX_N_EXPR_FRAMES];
     size_t expr_stack_len = 0;
-    struct expr_frame* frame;  // The current (top) one.
+    struct ExprFrame* frame;  // The current (top) one.
 
     Ast* return_ast = NULL;
 
@@ -405,7 +405,7 @@ compile_expr(State* state) {
             if (past_first_op) {
                 if (higher_precedence(latest_oper, op)) {
                     assert(expr_stack_len < MAX_N_EXPR_FRAMES);
-                    expr_stack[expr_stack_len] = (struct expr_frame){
+                    expr_stack[expr_stack_len] = (struct ExprFrame){
                         r1, op,
                     };
                     frame = &expr_stack[expr_stack_len];
@@ -576,7 +576,7 @@ compile_instrs() {
 }
 
 static void
-compile(struct file* file) {
+compile(struct File* file) {
     State state = {
         .file = file,
     };
@@ -731,7 +731,7 @@ main(int argc, char** argv) {
         perror("mmap");
         return 1;
     }
-    struct file file = {
+    struct File file = {
         .name = filename,
         .content = (char*)mem,
         .size = size,
