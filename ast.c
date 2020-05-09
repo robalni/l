@@ -243,6 +243,14 @@ print_ast_part(Ast* ast, int indent) {
     Ast* a = ast;
     int insp = indent * 4;
     switch (a->type) {
+    case AST_VAR: {
+        Binding* b = a->var.binding;
+        fprintf(stderr, "%*s%.*s %.*s ", insp, "",
+                (int)b->name.len, b->name.data,
+                (int)b->type->name.len, b->type->name.data);
+        print_ast_part(a->var.value, indent);
+        fprintf(stderr, ";\n");
+    } break;
     case AST_IF: {
         fprintf(stderr, "%*sif ", insp, "");
         print_ast_part(a->if_block.head, indent);
