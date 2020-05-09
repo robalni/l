@@ -125,6 +125,9 @@ into_reg(Segment* seg, Vreg* r) {
         dest = alloc_vreg();
         rv64_add_li(seg, dest, r->val);
         break;
+    case VREG_UNUSED:
+        abort();
+        break;
     }
     return dest;
 }
@@ -149,6 +152,9 @@ into_this_reg(Segment* seg, Vreg* r, enum reg into) {
     case VREG_STATIC:
         dest = alloc_this_reg(into);
         rv64_add_li(seg, dest, r->val);
+        break;
+    case VREG_UNUSED:
+        abort();
         break;
     }
     return dest;
