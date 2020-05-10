@@ -1,52 +1,15 @@
-enum Rv64Type {
-    RV64_I,
-    RV64_R,
-    RV64_RI64,
-    RV64_NONE,
-
-    // Not a real instruction
-    FN_START,
-};
-
-typedef void (*Rv64FnR)(Segment*, enum reg, enum reg, enum reg);
-typedef void (*Rv64FnRi64)(Segment*, enum reg, uint64_t);
-typedef void (*Rv64FnNone)(Segment*);
-
-struct Rv64Instr {
-    enum Rv64Type type;
-    union {
-        struct {
-            Rv64FnNone fn;
-        } none;
-        struct {
-            Rv64FnR fn;
-            Vreg* rd;
-            Vreg* rs1;
-            Vreg* rs2;
-        } r;
-        struct {
-            Rv64FnRi64 fn;
-            Vreg* rd;
-            uint64_t imm;
-        } ri64;
-        struct {
-            Binding* binding;
-        } fn_start;
-    };
-};
-typedef struct Rv64Instr Rv64Instr;
-
 #define MAX_VINSTRS 1000
 static Rv64Instr vinstrs[MAX_VINSTRS];
 static size_t n_vinstrs;
 
-static void
+static Rv64Instr*
 rv64_add(Segment* seg, Rv64Instr instr) {
     if (n_vinstrs >= MAX_VINSTRS) {
         abort();
     }
     vinstrs[n_vinstrs] = instr;
     n_vinstrs++;
+    return &vinstrs[n_vinstrs - 1];
 }
 
 enum syscall {
@@ -199,11 +162,35 @@ rv64_add_add(Segment* seg, Vreg* l, Vreg* r) {
     return rd;
 }
 
+static Rv64Instr*
+rv64_add_beqz(Segment* seg, Vreg* cond) {
+    cond = into_reg(seg, cond);
+    Rv64Instr instr = {
+        .type = RV64_B,
+        .b = {
+            .fn = rv64_write_beqz_unknown,
+            .rs1 = cond,
+            .rs2 = get_vreg_zero(),
+            .imm = 0,
+        },
+    };
+    return rv64_add(seg, instr);
+}
+
 static void
 add_function_start(Segment* seg, Binding* binding) {
     Rv64Instr instr = {
         .type = FN_START,
         .fn_start = binding,
+    };
+    rv64_add(seg, instr);
+}
+
+static void
+rv64_add_patch_addr_here(Segment* seg, Rv64Instr* other_instr) {
+    Rv64Instr instr = {
+        .type = PATCH,
+        .patch = other_instr,
     };
     rv64_add(seg, instr);
 }

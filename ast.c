@@ -18,6 +18,11 @@ enum AstType {
     AST_VAR,
 };
 
+struct AstBlock {
+    struct Ast* parent;
+    AstList children;
+};
+
 struct Ast {
     enum AstType type;
     struct Ast* next;  // When in a list.
@@ -38,14 +43,12 @@ struct Ast {
             struct Ast* r;
         } oper;
         struct AstFn {
-            struct Ast* parent;
-            AstList children;
+            struct AstBlock block;
             Binding* name;
         } fn_block;
         struct AstIf {
-            struct Ast* parent;
+            struct AstBlock block;
             struct Ast* head;
-            AstList children;
         } if_block;
         struct AstExit {
             struct Ast* val;
@@ -84,13 +87,13 @@ ast_add(Ast* block, Ast* a) {
     a->next = NULL;
     switch (block->type) {
     case AST_IF:
-        ast_list_add(&block->if_block.children, a);
+        ast_list_add(&block->if_block.block.children, a);
         break;
     case AST_ROOT:
         ast_list_add(&block->root.children, a);
         break;
     case AST_FN:
-        ast_list_add(&block->fn_block.children, a);
+        ast_list_add(&block->fn_block.block.children, a);
         break;
     default:
         abort();
@@ -98,10 +101,10 @@ ast_add(Ast* block, Ast* a) {
     }
     switch (a->type) {
     case AST_IF:
-        a->if_block.parent = block;
+        a->if_block.block.parent = block;
         break;
     case AST_FN:
-        a->fn_block.parent = block;
+        a->fn_block.block.parent = block;
         break;
     default:
         break;
@@ -255,14 +258,14 @@ print_ast_part(Ast* ast, int indent) {
         fprintf(stderr, "%*sif ", insp, "");
         print_ast_part(a->if_block.head, indent);
         fprintf(stderr, " {\n");
-        print_ast_children(&a->if_block.children, indent + 1);
+        print_ast_children(&a->if_block.block.children, indent + 1);
         fprintf(stderr, "%*s}\n", insp, "");
     } break;
     case AST_FN: {
         Binding* b = a->fn_block.name;
         fprintf(stderr, "%*sfn %.*s {\n",
                 insp, "", (int)b->name.len, b->name.data);
-        print_ast_children(&a->fn_block.children, indent + 1);
+        print_ast_children(&a->fn_block.block.children, indent + 1);
         fprintf(stderr, "%*s}\n", insp, "");
     } break;
     case AST_ROOT: {

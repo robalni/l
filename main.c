@@ -39,9 +39,9 @@ struct Segment {
     size_t len;
     size_t addr;
 
-    // Type is *Instr
-    void* instrs;
-    size_t n_instrs;
+    // Type is *Patch
+    void* patches;
+    size_t n_patches;
 };
 typedef struct Segment Segment;
 
@@ -52,8 +52,6 @@ init_seg(Segment* seg, const char* name, size_t addr) {
     seg->len = 0;
     seg->name = name;
     seg->addr = addr;
-    seg->instrs = NULL;
-    seg->n_instrs = 0;
 }
 
 static void
@@ -502,10 +500,15 @@ compile_ast_expr(const Ast* ast) {
 }
 
 static void
-compile_ast_fn(const struct AstFn* fn) {
-    add_function_start(&seg_text, fn->name);
-    ast_for(b, fn->children) {
+compile_ast_block(const struct AstBlock* block) {
+    ast_for(b, block->children) {
         switch (b->type) {
+        case AST_IF: {
+            Vreg* r = compile_ast_expr(b->if_block.head);
+            Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
+            compile_ast_block(&b->if_block.block);
+            rv64_add_patch_addr_here(&seg_text, branch_instr);
+        } break;
         case AST_EXIT: {
             Vreg* r = compile_ast_expr(b->exit.val);
             rv64_add_exit(&seg_text, r);
@@ -520,6 +523,12 @@ compile_ast_fn(const struct AstFn* fn) {
             break;
         }
     }
+}
+
+static void
+compile_ast_fn(const struct AstFn* fn) {
+    add_function_start(&seg_text, fn->name);
+    compile_ast_block(&fn->block);
 }
 
 static void
@@ -577,7 +586,8 @@ determine_vregs() {
 static void
 compile_instrs() {
     for (size_t i = 0; i < n_vinstrs; i++) {
-        const Rv64Instr *instr = &vinstrs[i];
+        Rv64Instr *instr = &vinstrs[i];
+        instr->offset = seg_text.len;
         switch (instr->type) {
         case RV64_R:
             fprintf(stderr, "VINSTR: RV64_R %d, %d, %d\n", instr->r.rd->reg, instr->r.rs1->reg, instr->r.rs2->reg);
@@ -596,6 +606,16 @@ compile_instrs() {
                            instr->ri64.rd->reg,
                            instr->ri64.imm);
             break;
+        case RV64_B:
+            fprintf(stderr, "VINSTR: RV64_B %d, %d, %d\n",
+                    instr->b.rs1->reg, instr->b.rs2->reg, instr->b.imm);
+            assert(instr->b.rs1->state == VREG_EXACT);
+            assert(instr->b.rs2->state == VREG_EXACT);
+            instr->b.fn(&seg_text,
+                        instr->b.rs1->reg,
+                        instr->b.rs2->reg,
+                        instr->b.imm);
+            break;
         case RV64_NONE:
             fprintf(stderr, "VINSTR: RV64_NONE\n");
             instr->none.fn(&seg_text);
@@ -603,6 +623,10 @@ compile_instrs() {
         case FN_START:
             fprintf(stderr, "VINSTR: FN_START\n");
             vreg_set_state_mem_addr(instr->fn_start.binding->last_vreg, &seg_text, seg_text.len);
+            break;
+        case PATCH:
+            fprintf(stderr, "VINSTR: PATCH\n");
+            rv64_patch(&seg_text, instr->patch.instr, instr->offset);
             break;
         default:
             fprintf(stderr, "VINSTR: Unknown\n");
@@ -697,10 +721,10 @@ compile(struct File* file) {
         } else if (block && read_char(&state, '}')) {
             switch (block->type) {
             case AST_IF:
-                block = block->if_block.parent;
+                block = block->if_block.block.parent;
                 break;
             case AST_FN:
-                block = block->fn_block.parent;
+                block = block->fn_block.block.parent;
                 inside_function = NULL;
                 break;
             default:

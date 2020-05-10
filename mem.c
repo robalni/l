@@ -9,6 +9,8 @@ struct Mem {
 };
 typedef struct Mem Mem;
 
+struct Mem default_mem;
+
 static MemHeader*
 mem_new_segment(Mem* mem, size_t space_needed) {
     space_needed += sizeof (MemHeader);

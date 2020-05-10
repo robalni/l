@@ -82,7 +82,12 @@ struct Vreg {
 typedef struct Vreg Vreg;
 
 #define MAX_VREGS 100
-static Vreg vregs[MAX_VREGS];
+static Vreg vregs[MAX_VREGS] = {
+    {
+        .state = VREG_EXACT,
+        .reg = REG_ZERO,
+    },
+};
 
 static size_t
 find_first_free_vreg_index() {
@@ -152,6 +157,11 @@ alloc_this_reg(enum reg r) {
         Vreg* new_vreg = move_vreg(v);
     }
     return v;
+}
+
+static Vreg*
+get_vreg_zero() {
+    return &vregs[0];
 }
 
 static void

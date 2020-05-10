@@ -1,6 +1,71 @@
+typedef void (*Rv64FnR)(Segment*, enum reg, enum reg, enum reg);
+typedef void (*Rv64FnRi64)(Segment*, enum reg, uint64_t);
+typedef void (*Rv64FnB)(Segment*, enum reg, enum reg, uint64_t);
+typedef void (*Rv64FnNone)(Segment*);
+
+enum Rv64Type {
+    RV64_I,
+    RV64_R,
+    RV64_RI64,
+    RV64_B,
+    RV64_NONE,
+
+    // Not a real instruction
+    FN_START,
+    PATCH,
+};
+
+struct Rv64Instr {
+    enum Rv64Type type;
+    union {
+        struct {
+            Rv64FnNone fn;
+        } none;
+        struct {
+            Rv64FnR fn;
+            Vreg* rd;
+            Vreg* rs1;
+            Vreg* rs2;
+        } r;
+        struct {
+            Rv64FnRi64 fn;
+            Vreg* rd;
+            uint64_t imm;
+        } ri64;
+        struct {
+            Rv64FnB fn;
+            Vreg* rs1;
+            Vreg* rs2;
+            uint64_t imm;
+        } b;
+        struct {
+            Binding* binding;
+        } fn_start;
+        struct {
+            struct Rv64Instr* instr;
+        } patch;
+    };
+    size_t offset;
+};
+typedef struct Rv64Instr Rv64Instr;
+
 // Returns the bits of x between (including) position l and h.
 // Example: BITS(0b1100101, 2, 5) == 1001
 #define BITS(x, l, h) ((x & ((1 << ((h + 1) % (sizeof (x) * 8))) - 1)) >> l)
+
+static void
+rv64_patch(Segment* seg, Rv64Instr* instr, size_t imm) {
+    imm = imm - instr->offset;
+    switch (instr->type) {
+    case RV64_B:
+        *(uint32_t*)(seg->data + instr->offset) |= 0
+            | (BITS(imm, 11, 11) << 7)
+            | (BITS(imm, 1, 4) << 8)
+            | (BITS(imm, 5, 10) << 25)
+            | (BITS(imm, 12, 12) << 31);
+        break;
+    }
+}
 
 static void
 rv64_write_add(Segment* seg, enum reg rd, enum reg rs1, enum reg rs2) {
@@ -83,6 +148,21 @@ rv64_write_jump(Segment* seg, int16_t off) {
         | ((off >> 4 & 1) << 11)
         | ((off >> 11 & 1) << 12);
     add_data(seg, &n, 2);
+}
+
+static void
+rv64_write_beqz_unknown(Segment* seg, enum reg rs1, enum reg rs2, uint64_t imm) {
+    assert(imm == 0);
+    assert(rs2 == 0);
+
+    uint32_t n;
+    n = 0b1100011
+        | (BITS(imm, 11, 11) << 7)
+        | (BITS(imm, 1, 4) << 8)
+        | (rs1 << 15)
+        | (BITS(imm, 5, 10) << 25)
+        | (BITS(imm, 12, 12) << 31);
+    add_data(seg, &n, 4);
 }
 
 static void
