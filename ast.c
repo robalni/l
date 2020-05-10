@@ -12,6 +12,7 @@ enum AstType {
     AST_OPER,
     AST_FN,
     AST_IF,
+    AST_WHILE,
     AST_LABEL,
     AST_EXIT,
     AST_ASSIGN,
@@ -50,6 +51,10 @@ struct Ast {
             struct AstBlock block;
             struct Ast* head;
         } if_block;
+        struct AstWhile {
+            struct AstBlock block;
+            struct Ast* head;
+        } while_block;
         struct AstExit {
             struct Ast* val;
         } exit;
@@ -89,6 +94,9 @@ ast_add(Ast* block, Ast* a) {
     case AST_IF:
         ast_list_add(&block->if_block.block.children, a);
         break;
+    case AST_WHILE:
+        ast_list_add(&block->while_block.block.children, a);
+        break;
     case AST_ROOT:
         ast_list_add(&block->root.children, a);
         break;
@@ -102,6 +110,9 @@ ast_add(Ast* block, Ast* a) {
     switch (a->type) {
     case AST_IF:
         a->if_block.block.parent = block;
+        break;
+    case AST_WHILE:
+        a->while_block.block.parent = block;
         break;
     case AST_FN:
         a->fn_block.block.parent = block;
@@ -142,6 +153,18 @@ ast_new_if(Ast* head) {
     *a = (Ast) {
         .type = AST_IF,
         .if_block = {
+            .head = head,
+        },
+    };
+    return a;
+}
+
+static Ast*
+ast_new_while(Ast* head) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_WHILE,
+        .while_block = {
             .head = head,
         },
     };
@@ -259,6 +282,13 @@ print_ast_part(Ast* ast, int indent) {
         print_ast_part(a->if_block.head, indent);
         fprintf(stderr, " {\n");
         print_ast_children(&a->if_block.block.children, indent + 1);
+        fprintf(stderr, "%*s}\n", insp, "");
+    } break;
+    case AST_WHILE: {
+        fprintf(stderr, "%*swhile ", insp, "");
+        print_ast_part(a->while_block.head, indent);
+        fprintf(stderr, " {\n");
+        print_ast_children(&a->while_block.block.children, indent + 1);
         fprintf(stderr, "%*s}\n", insp, "");
     } break;
     case AST_FN: {

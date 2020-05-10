@@ -177,6 +177,18 @@ rv64_add_beqz(Segment* seg, Vreg* cond) {
     return rv64_add(seg, instr);
 }
 
+static Rv64Instr*
+rv64_add_jump(Segment* seg) {
+    Rv64Instr instr = {
+        .type = RV64_J,
+        .j = {
+            .fn = rv64_write_jump_unknown,
+            .imm = 0,
+        },
+    };
+    return rv64_add(seg, instr);
+}
+
 static void
 add_function_start(Segment* seg, Binding* binding) {
     Rv64Instr instr = {
@@ -187,10 +199,13 @@ add_function_start(Segment* seg, Binding* binding) {
 }
 
 static void
-rv64_add_patch_addr_here(Segment* seg, Rv64Instr* other_instr) {
+rv64_add_patch_addr(Segment* seg, Rv64Instr* other_instr, Rv64Instr* target_instr) {
     Rv64Instr instr = {
         .type = PATCH,
-        .patch = other_instr,
+        .patch = {
+            .instr = other_instr,
+            .target = target_instr,
+        },
     };
     rv64_add(seg, instr);
 }

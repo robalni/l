@@ -1,6 +1,7 @@
 typedef void (*Rv64FnR)(Segment*, enum reg, enum reg, enum reg);
 typedef void (*Rv64FnRi64)(Segment*, enum reg, uint64_t);
 typedef void (*Rv64FnB)(Segment*, enum reg, enum reg, uint64_t);
+typedef void (*Rv64FnJ)(Segment*, int16_t);
 typedef void (*Rv64FnNone)(Segment*);
 
 enum Rv64Type {
@@ -8,6 +9,7 @@ enum Rv64Type {
     RV64_R,
     RV64_RI64,
     RV64_B,
+    RV64_J,
     RV64_NONE,
 
     // Not a real instruction
@@ -39,10 +41,15 @@ struct Rv64Instr {
             uint64_t imm;
         } b;
         struct {
+            Rv64FnJ fn;
+            int16_t imm;
+        } j;
+        struct {
             Binding* binding;
         } fn_start;
         struct {
             struct Rv64Instr* instr;
+            struct Rv64Instr* target;
         } patch;
     };
     size_t offset;
@@ -63,6 +70,13 @@ rv64_patch(Segment* seg, Rv64Instr* instr, size_t imm) {
             | (BITS(imm, 1, 4) << 8)
             | (BITS(imm, 5, 10) << 25)
             | (BITS(imm, 12, 12) << 31);
+        break;
+    case RV64_J:
+        *(uint32_t*)(seg->data + instr->offset) |= 0
+            | (BITS(imm, 12, 19) << 12)
+            | (BITS(imm, 11, 11) << 20)
+            | (BITS(imm, 1, 10) << 21)
+            | (BITS(imm, 20, 20) << 31);
         break;
     }
 }
@@ -136,18 +150,15 @@ rv64_write_sw(Segment* seg, enum reg rs2, uint16_t addr, enum reg rs1) {
 }
 
 static void
-rv64_write_jump(Segment* seg, int16_t off) {
-    uint16_t n;
-    n = 0b1010000000000001
-        | ((off >> 5 & 1) << 2)
-        | ((off >> 1 & 7) << 3)
-        | ((off >> 7 & 1) << 6)
-        | ((off >> 6 & 1) << 7)
-        | ((off >> 10 & 1) << 8)
-        | ((off >> 8 & 3) << 9)
-        | ((off >> 4 & 1) << 11)
-        | ((off >> 11 & 1) << 12);
-    add_data(seg, &n, 2);
+rv64_write_jump_unknown(Segment* seg, int16_t off) {
+    assert(off == 0);
+    uint32_t n;
+    n = 0b1101111
+        | (BITS(off, 12, 19) << 12)
+        | (BITS(off, 11, 11) << 20)
+        | (BITS(off, 1, 10) << 21)
+        | (BITS(off, 20, 20) << 31);
+    add_data(seg, &n, 4);
 }
 
 static void

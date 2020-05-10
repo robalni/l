@@ -491,6 +491,7 @@ compile_ast_expr(const Ast* ast) {
     case AST_ROOT:
     case AST_FN:
     case AST_IF:
+    case AST_WHILE:
     case AST_EXIT:
     case AST_ASSIGN:
     case AST_VAR:
@@ -507,7 +508,18 @@ compile_ast_block(const struct AstBlock* block) {
             Vreg* r = compile_ast_expr(b->if_block.head);
             Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
             compile_ast_block(&b->if_block.block);
-            rv64_add_patch_addr_here(&seg_text, branch_instr);
+            Rv64Instr* after_instr = &vinstrs[n_vinstrs];
+            rv64_add_patch_addr(&seg_text, branch_instr, after_instr);
+        } break;
+        case AST_WHILE: {
+            Vreg* r = compile_ast_expr(b->while_block.head);
+            Rv64Instr* first_instr = &vinstrs[n_vinstrs];
+            Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
+            compile_ast_block(&b->while_block.block);
+            Rv64Instr* jump_instr = rv64_add_jump(&seg_text);
+            Rv64Instr* after_instr = &vinstrs[n_vinstrs];
+            rv64_add_patch_addr(&seg_text, branch_instr, after_instr);
+            rv64_add_patch_addr(&seg_text, jump_instr, first_instr);
         } break;
         case AST_EXIT: {
             Vreg* r = compile_ast_expr(b->exit.val);
@@ -544,6 +556,7 @@ compile_ast_root(const Ast* root) {
         case AST_LABEL:
         case AST_OPER:
         case AST_IF:
+        case AST_WHILE:
         case AST_EXIT:
         case AST_ASSIGN:
             abort();
@@ -616,6 +629,10 @@ compile_instrs() {
                         instr->b.rs2->reg,
                         instr->b.imm);
             break;
+        case RV64_J:
+            fprintf(stderr, "VINSTR: RV64_J %d\n", instr->j.imm);
+            instr->j.fn(&seg_text, instr->j.imm);
+            break;
         case RV64_NONE:
             fprintf(stderr, "VINSTR: RV64_NONE\n");
             instr->none.fn(&seg_text);
@@ -626,7 +643,7 @@ compile_instrs() {
             break;
         case PATCH:
             fprintf(stderr, "VINSTR: PATCH\n");
-            rv64_patch(&seg_text, instr->patch.instr, instr->offset);
+            rv64_patch(&seg_text, instr->patch.instr, instr->patch.target->offset);
             break;
         default:
             fprintf(stderr, "VINSTR: Unknown\n");
@@ -672,6 +689,12 @@ compile(struct File* file) {
                 Ast* rd = compile_expr(&state);
                 if (read_char(&state, '{')) {
                     block = ast_add(block, ast_new_if(rd));
+                    end_of_statement = true;
+                }
+            } else if (str_eq(result->label.name, STR("while"))) {
+                Ast* rd = compile_expr(&state);
+                if (read_char(&state, '{')) {
+                    block = ast_add(block, ast_new_while(rd));
                     end_of_statement = true;
                 }
             } else if (str_eq(result->label.name, STR("exit"))) {
@@ -722,6 +745,9 @@ compile(struct File* file) {
             switch (block->type) {
             case AST_IF:
                 block = block->if_block.block.parent;
+                break;
+            case AST_WHILE:
+                block = block->while_block.block.parent;
                 break;
             case AST_FN:
                 block = block->fn_block.block.parent;
