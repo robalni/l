@@ -328,7 +328,7 @@ print_ast_part(Ast* ast, int indent) {
     } break;
     case AST_ASSIGN: {
         Str bn = a->assign.binding->name;
-        fprintf(stderr, "%.*s = ", (int)bn.len, bn.data);
+        fprintf(stderr, "%*s%.*s = ", insp, "", (int)bn.len, bn.data);
         print_ast_part(a->assign.val, indent);
         fprintf(stderr, "\n");
     } break;
