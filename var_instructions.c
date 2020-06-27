@@ -162,6 +162,24 @@ rv64_add_add(Segment* seg, Vreg* rd, Vreg* l, Vreg* r) {
     return rd;
 }
 
+static Vreg*
+rv64_add_sub(Segment* seg, Vreg* rd, Vreg* l, Vreg* r) {
+    l = into_reg(seg, l);
+    r = into_reg(seg, r);
+    rd = into_reg(seg, rd);
+    Rv64Instr instr = {
+        .type = RV64_R,
+        .r = {
+            .fn = rv64_write_sub,
+            .rd = rd,
+            .rs1 = l,
+            .rs2 = r,
+        },
+    };
+    rv64_add(seg, instr);
+    return rd;
+}
+
 static Rv64Instr*
 rv64_add_beqz(Segment* seg, Vreg* cond) {
     cond = into_reg(seg, cond);

@@ -173,6 +173,7 @@ typedef struct State State;
 
 enum oper {
     OP_PLUS,
+    OP_MINUS,
     OP_TIMES,
     OP_LESS,
 };
@@ -181,6 +182,7 @@ static const char*
 oper_to_str(enum oper o) {
     switch (o) {
     case OP_PLUS:   return "+";
+    case OP_MINUS:  return "-";
     case OP_TIMES:  return "*";
     case OP_LESS:   return "<";
     }
@@ -294,6 +296,8 @@ read_binop(State* s, enum oper* r) {
     size_t size = 1;
     if (read_char(s, '+')) {
         *r = OP_PLUS;
+    } else if (read_char(s, '-')) {
+        *r = OP_MINUS;
     } else if (read_char(s, '*')) {
         *r = OP_TIMES;
     } else if (read_char(s, '<')) {
@@ -358,6 +362,7 @@ higher_precedence(enum oper a, enum oper b) {
     struct Prec p[] = {
         {OP_TIMES, 13},
         {OP_PLUS, 12},
+        {OP_MINUS, 12},
         {OP_LESS, 10},
     };
     struct Prec pa, pb;
@@ -481,6 +486,9 @@ compile_ast_expr(const Ast* ast, Vreg* rd) {
             switch (oper->oper) {
             case OP_PLUS: {
                 return rv64_add_add(&seg_text, rd, l, r);
+            } break;
+            case OP_MINUS: {
+                return rv64_add_sub(&seg_text, rd, l, r);
             } break;
             default:
                 abort();

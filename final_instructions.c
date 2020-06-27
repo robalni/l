@@ -106,6 +106,18 @@ rv64_write_add(Segment* seg, enum reg rd, enum reg rs1, enum reg rs2) {
 }
 
 static void
+rv64_write_sub(Segment* seg, enum reg rd, enum reg rs1, enum reg rs2) {
+    uint32_t i;
+    if (rs1 == rd) {
+        i = 0b1000110000000001 | (rs2 << 2) | (rd << 7);
+        add_data(seg, &i, 2);
+    } else {
+        i = (1 << 30) | 0b0110011 | (rd << 7) | (rs1 << 15) | (rs2 << 20);
+        add_data(seg, &i, 4);
+    }
+}
+
+static void
 rv64_write_mul(Segment* seg, enum reg rd, enum reg rs1, enum reg rs2) {
     uint32_t i;
     i = 0b0110011 | rd << 7 | rs1 << 15 | rs2 << 20 | 1 << 25;
