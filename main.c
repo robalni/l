@@ -542,7 +542,7 @@ compile_ast_block(const struct AstBlock* block) {
             Vreg* r = compile_ast_expr(b->exit.val, alloc_vreg());
             rv64_add_exit(&seg_text, r);
         } break;
-        // These do not belong inside a function.
+        // These do not belong inside a code block.
         case AST_ROOT:
         case AST_FN:
         case AST_NUM:
