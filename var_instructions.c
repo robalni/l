@@ -145,10 +145,10 @@ rv64_add_exit(Segment* seg, Vreg* r) {
 }
 
 static Vreg*
-rv64_add_add(Segment* seg, Vreg* l, Vreg* r) {
+rv64_add_add(Segment* seg, Vreg* rd, Vreg* l, Vreg* r) {
     l = into_reg(seg, l);
     r = into_reg(seg, r);
-    Vreg* rd = alloc_vreg();
+    rd = into_reg(seg, rd);
     Rv64Instr instr = {
         .type = RV64_R,
         .r = {
@@ -205,6 +205,18 @@ rv64_add_patch_addr(Segment* seg, Rv64Instr* other_instr, Rv64Instr* target_inst
         .patch = {
             .instr = other_instr,
             .target = target_instr,
+        },
+    };
+    rv64_add(seg, instr);
+}
+
+static void
+add_assign(Segment* seg, Vreg* dest, Vreg* source) {
+    Rv64Instr instr = {
+        .type = ASSIGN,
+        .assign = {
+            .dest = dest,
+            .val = source,
         },
     };
     rv64_add(seg, instr);

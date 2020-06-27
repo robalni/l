@@ -12,8 +12,9 @@ enum Rv64Type {
     RV64_J,
     RV64_NONE,
 
-    // Not a real instruction
+    // Not real instructions
     FN_START,
+    ASSIGN,
     PATCH,
 };
 
@@ -47,6 +48,10 @@ struct Rv64Instr {
         struct {
             Binding* binding;
         } fn_start;
+        struct {
+            Vreg* dest;
+            Vreg* val;
+        } assign;
         struct {
             struct Rv64Instr* instr;
             struct Rv64Instr* target;

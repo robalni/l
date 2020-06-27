@@ -446,7 +446,7 @@ compile_expr(State* state) {
 #define ast_for(a, list) \
     for (const Ast* a = list.first; a; a = a->next)
 static Vreg*
-compile_ast_expr(const Ast* ast) {
+compile_ast_expr(const Ast* ast, Vreg* rd) {
     switch (ast->type) {
     case AST_NUM: {
         Vreg* v = alloc_vreg();
@@ -460,7 +460,7 @@ compile_ast_expr(const Ast* ast) {
         if (b->last_vreg) {
             v = b->last_vreg;
             if (v->state == VREG_AST) {
-                v = compile_ast_expr(v->ast);
+                v = compile_ast_expr(v->ast, alloc_vreg());
             }
         } else {
             v = alloc_vreg();
@@ -471,17 +471,17 @@ compile_ast_expr(const Ast* ast) {
     } break;
     case AST_OPER: {
         const struct AstOper* oper = &ast->oper;
-        Vreg* l = compile_ast_expr(oper->l);
-        Vreg* r = compile_ast_expr(oper->r);
+        Vreg* l = compile_ast_expr(oper->l, alloc_vreg());
+        Vreg* r = compile_ast_expr(oper->r, alloc_vreg());
         if (0 && l->state == VREG_STATIC && r->state == VREG_STATIC) {
             l->val = ast;
             free_vreg(r);
             return l;
         } else {
             switch (oper->oper) {
-            case OP_PLUS:
-                return rv64_add_add(&seg_text, l, r);
-                break;
+            case OP_PLUS: {
+                return rv64_add_add(&seg_text, rd, l, r);
+            } break;
             default:
                 abort();
             }
@@ -504,15 +504,24 @@ static void
 compile_ast_block(const struct AstBlock* block) {
     ast_for(b, block->children) {
         switch (b->type) {
+        case AST_VAR: {
+            Vreg* r = compile_ast_expr(b->var.value, alloc_vreg());
+            b->var.binding->last_vreg = r;
+            add_assign(&seg_text, b->var.binding->last_vreg, r);
+        } break;
+        case AST_ASSIGN: {
+            Vreg* r = compile_ast_expr(b->assign.val, alloc_vreg());
+            rv64_add_add(&seg_text, b->assign.binding->last_vreg, get_vreg_zero(), r);
+        } break;
         case AST_IF: {
-            Vreg* r = compile_ast_expr(b->if_block.head);
+            Vreg* r = compile_ast_expr(b->if_block.head, alloc_vreg());
             Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
             compile_ast_block(&b->if_block.block);
             Rv64Instr* after_instr = &vinstrs[n_vinstrs];
             rv64_add_patch_addr(&seg_text, branch_instr, after_instr);
         } break;
         case AST_WHILE: {
-            Vreg* r = compile_ast_expr(b->while_block.head);
+            Vreg* r = compile_ast_expr(b->while_block.head, alloc_vreg());
             Rv64Instr* first_instr = &vinstrs[n_vinstrs];
             Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
             compile_ast_block(&b->while_block.block);
@@ -522,7 +531,7 @@ compile_ast_block(const struct AstBlock* block) {
             rv64_add_patch_addr(&seg_text, jump_instr, first_instr);
         } break;
         case AST_EXIT: {
-            Vreg* r = compile_ast_expr(b->exit.val);
+            Vreg* r = compile_ast_expr(b->exit.val, alloc_vreg());
             rv64_add_exit(&seg_text, r);
         } break;
         // These do not belong inside a function.
@@ -588,7 +597,7 @@ determine_vregs() {
             if (instr->ri64.rd->state != VREG_USED) {
                 continue;
             }
-            fprintf(stderr, "%d, %ld\n", instr->ri64.rd->state, instr->ri64.imm);
+            fprintf(stderr, "RV64_RI64 rd:%d, rs:%ld\n", instr->ri64.rd->state, instr->ri64.imm);
             enum reg reg = use_free_reg();
             vreg_set_state_exact(instr->ri64.rd, reg);
             break;
@@ -640,6 +649,17 @@ compile_instrs() {
         case FN_START:
             fprintf(stderr, "VINSTR: FN_START\n");
             vreg_set_state_mem_addr(instr->fn_start.binding->last_vreg, &seg_text, seg_text.len);
+            break;
+        case ASSIGN:
+            fprintf(stderr, "VINSTR: ASSIGN\n");
+            Vreg* rs = instr->assign.val;
+            Vreg* rd = instr->assign.dest;
+            assert(rd->state == VREG_EXACT);
+            if (rs->state == VREG_STATIC) {
+                rv64_write_li(&seg_text, rd->reg, rs->val);
+            } else if (rs->state == VREG_EXACT) {
+                assert(rs->reg == rd->reg);
+            }
             break;
         case PATCH:
             fprintf(stderr, "VINSTR: PATCH\n");
