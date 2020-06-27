@@ -529,8 +529,8 @@ compile_ast_block(const struct AstBlock* block) {
             rv64_add_patch_addr(&seg_text, branch_instr, after_instr);
         } break;
         case AST_WHILE: {
-            Vreg* r = compile_ast_expr(b->while_block.head, alloc_vreg());
             Rv64Instr* first_instr = &vinstrs[n_vinstrs];
+            Vreg* r = compile_ast_expr(b->while_block.head, alloc_vreg());
             Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
             compile_ast_block(&b->while_block.block);
             Rv64Instr* jump_instr = rv64_add_jump(&seg_text);
