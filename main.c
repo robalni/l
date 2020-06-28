@@ -605,7 +605,7 @@ determine_vregs() {
             if (instr->ri64.rd->state != VREG_USED) {
                 continue;
             }
-            fprintf(stderr, "RV64_RI64 rd:%d, rs:%ld\n", instr->ri64.rd->state, instr->ri64.imm);
+            fprintf(stderr, "RV64_RI64 rd:%d, imm:%ld\n", instr->ri64.rd->state, instr->ri64.imm);
             enum reg reg = use_free_reg();
             vreg_set_state_exact(instr->ri64.rd, reg);
             break;
