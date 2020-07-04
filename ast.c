@@ -366,7 +366,7 @@ print_ast_part(Ast* ast, int indent) {
     } break;
     case AST_CALL: {
         Str name = a->call.binding->name;
-        fprintf(stderr, "%*s%.*s()\n", insp, "", (int)name.len, name.data);
+        fprintf(stderr, "%.*s()", (int)name.len, name.data);
     } break;
     }
 }

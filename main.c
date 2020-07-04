@@ -403,7 +403,14 @@ compile_expr(State* state) {
             r = &r1;
         }
 
-        if (read_label(state, r) || read_number(state, r)) {
+        if (read_label(state, r)) {
+            if (read_char(state, '(')) {
+                if (read_char(state, ')')) {
+                    Binding* b = get_binding(r[0]->label.name);
+                    *r = ast_new_call(b);
+                }
+            }
+        } else if (read_number(state, r)) {
         } else if (read_binop(state, &latest_oper)) {
             if (past_first_op) {
                 if (higher_precedence(latest_oper, op)) {
@@ -474,6 +481,12 @@ compile_ast_expr(const Ast* ast, Vreg* rd) {
         }
         return v;
     } break;
+    case AST_CALL: {
+        Rv64Instr* call = rv64_add_call(&seg_text, ast->call.binding);
+        rv64_add_patch_addr_binding(&seg_text, call, ast->call.binding);
+        Vreg* v = alloc_this_reg(REG_A0);
+        return v;
+    } break;
     case AST_OPER: {
         const struct AstOper* oper = &ast->oper;
         Vreg* l = compile_ast_expr(oper->l, alloc_vreg());
@@ -521,10 +534,6 @@ compile_ast_block(const struct AstBlock* block) {
             Vreg* r = compile_ast_expr(b->assign.val, alloc_vreg());
             rv64_add_add(&seg_text, b->assign.binding->last_vreg, get_vreg_zero(), r);
         } break;
-        case AST_CALL: {
-            Rv64Instr* call = rv64_add_call(&seg_text, b->call.binding);
-            rv64_add_patch_addr_binding(&seg_text, call, b->call.binding);
-        } break;
         case AST_IF: {
             Vreg* r = compile_ast_expr(b->if_block.head, alloc_vreg());
             Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
@@ -556,6 +565,7 @@ compile_ast_block(const struct AstBlock* block) {
         case AST_NUM:
         case AST_LABEL:
         case AST_OPER:
+        case AST_CALL:
             abort();
             break;
         }
@@ -802,14 +812,6 @@ compile(struct File* file) {
                         Binding* b = get_binding(name);
                         ast_add(block, ast_new_assign(b, rd));
                         end_of_statement = true;
-                    }
-                } else if (read_char(&state, '(')) {
-                    if (read_char(&state, ')')) {
-                        if (read_char(&state, ';')) {
-                            Binding* b = get_binding(name);
-                            ast_add(block, ast_new_call(b));
-                            end_of_statement = true;
-                        }
                     }
                 }
             }
