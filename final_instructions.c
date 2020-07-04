@@ -1,4 +1,5 @@
 typedef void (*Rv64FnR)(Segment*, enum reg, enum reg, enum reg);
+typedef void (*Rv64FnI)(Segment*, enum reg, enum reg, int64_t);
 typedef void (*Rv64FnRi64)(Segment*, enum reg, uint64_t);
 typedef void (*Rv64FnB)(Segment*, enum reg, enum reg, uint64_t);
 typedef void (*Rv64FnJ)(Segment*, int16_t);
@@ -31,6 +32,12 @@ struct Rv64Instr {
             Vreg* rs1;
             Vreg* rs2;
         } r;
+        struct {
+            Rv64FnI fn;
+            Vreg* rd;
+            Vreg* rs1;
+            int64_t imm;
+        } i;
         struct {
             Rv64FnRi64 fn;
             Vreg* rd;
@@ -194,6 +201,16 @@ rv64_write_call_unknown(Segment* seg, int16_t off) {
         | (BITS(off, 11, 11) << 20)
         | (BITS(off, 1, 10) << 21)
         | (BITS(off, 20, 20) << 31);
+    add_data(seg, &n, 4);
+}
+
+static void
+rv64_write_jalr(Segment* seg, enum reg rd, enum reg rs1, int16_t off) {
+    uint32_t n;
+    n = 0b1100111
+        | (rd << 7)
+        | (rs1 << 15)
+        | (BITS(off, 0, 11) << 20);
     add_data(seg, &n, 4);
 }
 

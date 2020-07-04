@@ -562,6 +562,7 @@ static void
 compile_ast_fn(const struct AstFn* fn) {
     add_function_start(&seg_text, fn->name);
     compile_ast_block(&fn->block);
+    rv64_add_ret(&seg_text);
 }
 
 static void
@@ -632,6 +633,15 @@ compile_instrs() {
                         instr->r.rd->reg,
                         instr->r.rs1->reg,
                         instr->r.rs2->reg);
+            break;
+        case RV64_I:
+            fprintf(stderr, "VINSTR: RV64_I %d, %d, %ld\n", instr->i.rd->reg, instr->i.rs1->reg, instr->i.imm);
+            assert(instr->i.rd->state == VREG_EXACT);
+            assert(instr->i.rs1->state == VREG_EXACT);
+            instr->i.fn(&seg_text,
+                        instr->i.rd->reg,
+                        instr->i.rs1->reg,
+                        instr->i.imm);
             break;
         case RV64_RI64:
             fprintf(stderr, "VINSTR: RV64_RI64 %d %ld\n", instr->ri64.rd->reg, instr->ri64.imm);

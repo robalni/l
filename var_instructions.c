@@ -232,6 +232,20 @@ rv64_add_call(Segment* seg, Binding* b) {
     return rv64_add(seg, instr);
 }
 
+static Rv64Instr*
+rv64_add_ret(Segment* seg) {
+    Rv64Instr instr = {
+        .type = RV64_I,
+        .i = {
+            .fn = rv64_write_jalr,
+            .rd = get_vreg_zero(),
+            .rs1 = alloc_this_reg(REG_RA),
+            .imm = 0,
+        },
+    };
+    return rv64_add(seg, instr);
+}
+
 static void
 add_function_start(Segment* seg, Binding* binding) {
     Rv64Instr instr = {
