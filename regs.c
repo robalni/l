@@ -1,5 +1,6 @@
 enum reg {
     REG_ZERO = 0,
+    REG_RA = 1,
 
     REG_T0 = 5,
     REG_T1 = 6,

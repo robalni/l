@@ -521,6 +521,10 @@ compile_ast_block(const struct AstBlock* block) {
             Vreg* r = compile_ast_expr(b->assign.val, alloc_vreg());
             rv64_add_add(&seg_text, b->assign.binding->last_vreg, get_vreg_zero(), r);
         } break;
+        case AST_CALL: {
+            Rv64Instr* call = rv64_add_call(&seg_text, b->call.binding);
+            rv64_add_patch_addr_binding(&seg_text, call, b->call.binding);
+        } break;
         case AST_IF: {
             Vreg* r = compile_ast_expr(b->if_block.head, alloc_vreg());
             Rv64Instr* branch_instr = rv64_add_beqz(&seg_text, r);
@@ -678,6 +682,18 @@ compile_instrs() {
             break;
         }
     }
+    for (size_t i = 0; i < n_postinstrs; i++) {
+        Rv64Instr *instr = &postinstrs[i];
+        switch (instr->type) {
+        case PATCH_BINDING:
+            fprintf(stderr, "VINSTR: PATCH_BINDING\n");
+            Vreg* r = instr->patch_binding.binding->last_vreg;
+            assert(r->state == VREG_MEM_ADDR);
+            uint32_t off = r->loc.offset;
+            rv64_patch(&seg_text, instr->patch_binding.instr, off);
+            break;
+        }
+    }
 }
 
 static void
@@ -766,6 +782,14 @@ compile(struct File* file) {
                         Binding* b = get_binding(name);
                         ast_add(block, ast_new_assign(b, rd));
                         end_of_statement = true;
+                    }
+                } else if (read_char(&state, '(')) {
+                    if (read_char(&state, ')')) {
+                        if (read_char(&state, ';')) {
+                            Binding* b = get_binding(name);
+                            ast_add(block, ast_new_call(b));
+                            end_of_statement = true;
+                        }
                     }
                 }
             }

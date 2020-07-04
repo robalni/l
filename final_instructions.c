@@ -16,6 +16,7 @@ enum Rv64Type {
     FN_START,
     ASSIGN,
     PATCH,
+    PATCH_BINDING,
 };
 
 struct Rv64Instr {
@@ -56,6 +57,10 @@ struct Rv64Instr {
             struct Rv64Instr* instr;
             struct Rv64Instr* target;
         } patch;
+        struct {
+            struct Rv64Instr* instr;
+            Binding* binding;
+        } patch_binding;
     };
     size_t offset;
 };
@@ -171,6 +176,20 @@ rv64_write_jump_unknown(Segment* seg, int16_t off) {
     assert(off == 0);
     uint32_t n;
     n = 0b1101111
+        | (BITS(off, 12, 19) << 12)
+        | (BITS(off, 11, 11) << 20)
+        | (BITS(off, 1, 10) << 21)
+        | (BITS(off, 20, 20) << 31);
+    add_data(seg, &n, 4);
+}
+
+static void
+rv64_write_call_unknown(Segment* seg, int16_t off) {
+    assert(off == 0);
+    int rd = REG_RA;
+    uint32_t n;
+    n = 0b1101111
+        | (rd << 7)
         | (BITS(off, 12, 19) << 12)
         | (BITS(off, 11, 11) << 20)
         | (BITS(off, 1, 10) << 21)

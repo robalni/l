@@ -2,6 +2,10 @@
 static Rv64Instr vinstrs[MAX_VINSTRS];
 static size_t n_vinstrs;
 
+#define MAX_POSTINSTRS 1000
+static Rv64Instr postinstrs[MAX_POSTINSTRS];
+static size_t n_postinstrs;
+
 static Rv64Instr*
 rv64_add(Segment* seg, Rv64Instr instr) {
     if (n_vinstrs >= MAX_VINSTRS) {
@@ -10,6 +14,16 @@ rv64_add(Segment* seg, Rv64Instr instr) {
     vinstrs[n_vinstrs] = instr;
     n_vinstrs++;
     return &vinstrs[n_vinstrs - 1];
+}
+
+static Rv64Instr*
+rv64_add_end(Segment* seg, Rv64Instr instr) {
+    if (n_postinstrs >= MAX_POSTINSTRS) {
+        abort();
+    }
+    postinstrs[n_postinstrs] = instr;
+    n_postinstrs++;
+    return &postinstrs[n_postinstrs - 1];
 }
 
 enum syscall {
@@ -207,6 +221,17 @@ rv64_add_jump(Segment* seg) {
     return rv64_add(seg, instr);
 }
 
+static Rv64Instr*
+rv64_add_call(Segment* seg, Binding* b) {
+    Rv64Instr instr = {
+        .type = RV64_J,
+        .j = {
+            .fn = rv64_write_call_unknown,
+        },
+    };
+    return rv64_add(seg, instr);
+}
+
 static void
 add_function_start(Segment* seg, Binding* binding) {
     Rv64Instr instr = {
@@ -226,6 +251,18 @@ rv64_add_patch_addr(Segment* seg, Rv64Instr* other_instr, Rv64Instr* target_inst
         },
     };
     rv64_add(seg, instr);
+}
+
+static void
+rv64_add_patch_addr_binding(Segment* seg, Rv64Instr* i, Binding* b) {
+    Rv64Instr instr = {
+        .type = PATCH_BINDING,
+        .patch_binding = {
+            .instr = i,
+            .binding = b,
+        },
+    };
+    rv64_add_end(seg, instr);
 }
 
 static void

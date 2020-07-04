@@ -17,6 +17,7 @@ enum AstType {
     AST_EXIT,
     AST_ASSIGN,
     AST_VAR,
+    AST_CALL,
 };
 
 struct AstBlock {
@@ -69,6 +70,9 @@ struct Ast {
             struct Ast* value;
             Binding* binding;
         } var;
+        struct AstCall {
+            Binding* binding;
+        } call;
     };
 };
 typedef struct Ast Ast;
@@ -236,6 +240,18 @@ ast_new_var(Ast* val, Binding* b) {
     return a;
 }
 
+static Ast*
+ast_new_call(Binding* b) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_CALL,
+        .call = {
+            .binding = b,
+        },
+    };
+    return a;
+}
+
 static uint64_t
 ast_calc_static_value(Ast* ast) {
     switch (ast->type) {
@@ -331,6 +347,10 @@ print_ast_part(Ast* ast, int indent) {
         fprintf(stderr, "%*s%.*s = ", insp, "", (int)bn.len, bn.data);
         print_ast_part(a->assign.val, indent);
         fprintf(stderr, "\n");
+    } break;
+    case AST_CALL: {
+        Str name = a->call.binding->name;
+        fprintf(stderr, "%*s%.*s()\n", insp, "", (int)name.len, name.data);
     } break;
     }
 }
