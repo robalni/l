@@ -15,6 +15,7 @@ enum AstType {
     AST_WHILE,
     AST_LABEL,
     AST_EXIT,
+    AST_RET,
     AST_ASSIGN,
     AST_VAR,
     AST_CALL,
@@ -59,6 +60,9 @@ struct Ast {
         struct AstExit {
             struct Ast* val;
         } exit;
+        struct AstRet {
+            struct Ast* val;
+        } ret;
         struct AstLabel {
             Str name;
         } label;
@@ -133,6 +137,18 @@ ast_new_exit(Ast* val) {
     *a = (Ast) {
         .type = AST_EXIT,
         .exit = {
+            .val = val,
+        },
+    };
+    return a;
+}
+
+static Ast*
+ast_new_ret(Ast* val) {
+    Ast* a = mem_alloc(&ast_mem, Ast);
+    *a = (Ast) {
+        .type = AST_RET,
+        .ret = {
             .val = val,
         },
     };

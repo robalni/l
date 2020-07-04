@@ -1,5 +1,5 @@
 typedef void (*Rv64FnR)(Segment*, enum reg, enum reg, enum reg);
-typedef void (*Rv64FnI)(Segment*, enum reg, enum reg, int64_t);
+typedef void (*Rv64FnI)(Segment*, enum reg, enum reg, int16_t);
 typedef void (*Rv64FnRi64)(Segment*, enum reg, uint64_t);
 typedef void (*Rv64FnB)(Segment*, enum reg, enum reg, uint64_t);
 typedef void (*Rv64FnJ)(Segment*, int16_t);

@@ -546,6 +546,10 @@ compile_ast_block(const struct AstBlock* block) {
             Vreg* r = compile_ast_expr(b->exit.val, alloc_vreg());
             rv64_add_exit(&seg_text, r);
         } break;
+        case AST_RET: {
+            Vreg* r = compile_ast_expr(b->exit.val, alloc_vreg());
+            rv64_add_ret_val(&seg_text, r);
+        } break;
         // These do not belong inside a code block.
         case AST_ROOT:
         case AST_FN:
@@ -562,7 +566,7 @@ static void
 compile_ast_fn(const struct AstFn* fn) {
     add_function_start(&seg_text, fn->name);
     compile_ast_block(&fn->block);
-    rv64_add_ret(&seg_text);
+    rv64_add_ret_void(&seg_text);
 }
 
 static void
@@ -755,6 +759,12 @@ compile(struct File* file) {
                 Ast* val = compile_expr(&state);
                 if (read_char(&state, ';')) {
                     ast_add(block, ast_new_exit(val));
+                    end_of_statement = true;
+                }
+            } else if (str_eq(result->label.name, STR("return"))) {
+                Ast* val = compile_expr(&state);
+                if (read_char(&state, ';')) {
+                    ast_add(block, ast_new_ret(val));
                     end_of_statement = true;
                 }
             } else {
